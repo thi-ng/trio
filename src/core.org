@@ -1,0 +1,233 @@
+#+SETUPFILE: "setup.org"
+
+* Namespace: thi.ng.trio.core
+
+This namespace provides various protocols for the low-level triple
+store API, as well as a persistent in-memory store implementation and
+a flexible dataset type to aggregate models/stores and query multiple
+at once.
+
+** Protocol definitions
+
+*** PModel
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModel
+    (select [_] [_ s p o] [_ g s p o])
+    (subjects [_])
+    (predicates [_])
+    (objects [_])
+    (subject? [_ x])
+    (predicate? [_ x])
+    (object? [_ x])
+    (indexed? [_ x]))
+#+END_SRC
+
+*** PDataset
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PDataset
+    (remove-model [_ id])
+    (update-model [_ id f])
+    (get-model [_ id]))
+#+END_SRC
+
+*** PStatementAccess
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PStatementAccess
+    (add-statement [_ s] [_ g s])
+    (add-many [_ statements] [_ g statements])
+    (remove-statement [_ s] [_ g s])
+    (remove-many [_ statements] [_ g statements])
+    (update-statement [_ s s'] [_ g s s'])
+    (remove-subject [_ s] [_ g s]))
+#+END_SRC
+
+** Helper functions
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn remove-from-index
+    [ds idx i1 i2 i3]
+    (let [kv ((idx ds) i1)
+          v (disj (kv i2) i3)
+          kv (if (seq v) kv (dissoc kv i2))]
+      (if (seq kv)
+        (if (seq v)
+          (assoc-in ds [idx i1 i2] v)
+          (assoc-in ds [idx i1] kv))
+        (update-in ds [idx] dissoc i1))))
+
+  (defn select-seq
+    [coll statement-fn & [f-fn]]
+    (mapcat
+     (fn [[h objects]]
+       (map (statement-fn h) (if f-fn (filter f-fn objects) objects)))
+     coll))
+#+END_SRC
+
+** In-memory store
+
+*** Type implementation
+#+BEGIN_SRC clojure :noweb-ref memstore
+  (defrecord PlainMemoryStore [spo pos ops]
+    PStatementAccess
+    (add-statement
+      [_ [s p o]]
+      (let [s (get (find spo s) 0 s)
+            p (get (find pos p) 0 p)
+            o (get (find ops o) 0 o)]
+        (if (get-in spo [s p o])
+          _
+          (-> _
+              (update-in [:spo s p] d/set-conj o)
+              (update-in [:pos p o] d/set-conj s)
+              (update-in [:ops o p] d/set-conj s)))))
+    (add-many [_ statements]
+      (reduce add-statement _ statements))
+    (remove-statement [_ [s p o]]
+      (let [props (spo s)
+            obj (get props p)]
+        (if (get obj o)
+          (-> _
+              (remove-from-index :spo s p o)
+              (remove-from-index :pos p o s)
+              (remove-from-index :ops o p s))
+          _)))
+    (remove-many [_ statements]
+      (reduce remove-statement _ statements))
+    (update-statement [_ s1 s2]
+      (add-statement (remove-statement _ s1) s2))
+    (remove-subject [_ s]
+      (remove-many _ (select _ s nil nil)))
+
+    PModel
+    (subject? [_ x]
+      (if (spo x) x))
+    (predicate? [_ x]
+      (if (pos x) x))
+    (object? [_ x]
+      (if (ops x) x))
+    (indexed? [_ x] (if (or (spo x) (pos x) (ops x)) x))
+    (subjects [_] (keys spo))
+    (predicates [_] (keys pos))
+    (objects [_] (keys ops))
+    (select [_]
+      (select _ nil nil nil))
+    (select
+      [_ s p o]
+      (if s
+        (if p
+          (if o
+            ;; s p o
+            (let [t [s p o]] (when (get-in spo t) [t]))
+            ;; s p nil
+            (if-let [objects (get-in spo [s p])]
+              (map #(vector s p %) objects)))
+          ;; s nil o / s nil nil
+          (if-let [subjects (spo s)]
+            (select-seq subjects (fn [p] #(vector s p %)) (when o #(= o %)))))
+        (if p
+          (if o
+            ;; nil p o
+            (if-let [subjects (get-in pos [p o])]
+              (map #(vector % p o) subjects))
+            ;; nil p nil
+            (if-let [preds (pos p)]
+              (select-seq preds (fn [o] #(vector % p o)))))
+          (if o
+            ;; nil nil o
+            (if-let [objects (ops o)]
+              (select-seq objects (fn [p] #(vector % p o))))
+            ;; nil nil nil
+            (mapcat
+             (fn [[s props]]
+               (select-seq props (fn [p] #(vector s p %))))
+             spo))))))
+#+END_SRC
+
+*** Constructor
+#+BEGIN_SRC clojure :noweb-ref ctors
+  (defn plain-store
+    [] (PlainMemoryStore. {} {} {}))
+#+END_SRC
+
+** Multi-store dataset
+
+*** Type implementation
+#+BEGIN_SRC clojure :noweb-ref dataset
+  (defrecord PlainDataset [models]
+    PStatementAccess
+    (add-statement [_ s]
+      (add-statement _ :__default s))
+    (add-statement [_ g s]
+      (update-in _ [:models g] add-statement s))
+    (add-many [_ statements]
+      (add-many _ :__default statements))
+    (add-many [_ g statements]
+      (update-in _ [:models g] add-many statements))
+    (remove-statement [_ s]
+      (remove-statement _ :__default s))
+    (remove-statement [_ g s]
+      (update-in _ [:models g] remove-statement s))
+    (remove-many [_ statements]
+      (remove-many _ :__default statements))
+    (remove-many [_ g statements]
+      (update-in _ [:models g] remove-many statements))
+    (remove-subject [_ s]
+      (remove-subject _ :__default s))
+    (remove-subject [_ g s]
+      (update-in _ [:models g] remove-subject s))
+
+    PModel
+    (select [_]
+      (select _ nil nil nil))
+    (select [_ s p o]
+      (mapcat #(select % s p o) (vals models)))
+    (select [_ g s p o]
+      (when-let [g (models g)] (select g s p o)))
+    (subject? [_ x]
+      (some #(subject? % x) (vals models)))
+    (predicate? [_ x]
+      (some #(predicate? % x) (vals models)))
+    (object? [_ x]
+      (some #(object? % x) (vals models)))
+    (indexed? [_ x]
+      (some #(indexed? % x) (vals models)))
+    (subjects [_]
+      (set (mapcat subjects (vals models))))
+    (predicates [_]
+      (set (mapcat predicates (vals models))))
+    (objects [_]
+      (set (mapcat objects (vals models))))
+
+    PDataset
+    (update-model [_ id m]
+      (assoc-in _ [:models id] m))
+    (remove-model [_ id]
+      (update-in _ [:models] dissoc id))
+    (get-model [_ id]
+      (models id)))
+#+END_SRC
+
+*** Constructor
+#+BEGIN_SRC clojure :noweb-ref ctors
+  (defn plain-dataset
+    [& {:as models}]
+    (PlainDataset. (assoc models :__default (plain-store))))
+#+END_SRC
+
+** Namespace declaration
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/core.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.core
+    (:require
+     [thi.ng.common.data.core :as d]))
+
+  <<protos>>
+
+  <<helpers>>
+
+  <<memstore>>
+
+  <<dataset>>
+
+  <<ctors>>
+#+END_SRC
