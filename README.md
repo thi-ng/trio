@@ -1,6 +1,11 @@
 # thi.ng/trio
 
-TODO brief description
+![Example graph](assets/counselor.png)
+
+Simple, yet extensible and datatype agnostic
+[[http://en.wikipedia.org/wiki/Triplestore][triple store]] API &
+[[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for
+Clojure/ClojureScript.
 
 ## Description & usage
 

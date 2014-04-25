@@ -79,7 +79,7 @@ ALPHA quality, subject to frequent changes until further notice.
 
   ;; all characters in love
   (select ds nil 'loves nil)
-  ;; ([councelor loves laura] [laura loves counselor] [reiner loves malkina])
+  ;; ([counselor loves laura] [laura loves counselor] [reiner loves malkina])
 
 
   ;; all we know about malkina as object
@@ -118,7 +118,7 @@ ALPHA quality, subject to frequent changes until further notice.
 
   ;; is malkina a murderer?
   (q/select-with-bindings ds '[?v killed-by malkina])
-  ;; nil
+  ;; ()
 
 
   ;; ...doesn't look like it, but maybe she employed someone to do dirty

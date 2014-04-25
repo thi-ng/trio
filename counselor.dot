@@ -1,0 +1,19 @@
+digraph G {
+  node[color="black",style="filled",fontname="Inconsolata",fontcolor="white"];
+  edge[fontname="Inconsolata",fontsize="9"];
+
+  reiner       -> malkina [label="loves"];
+  laura        -> counselor [label="loves"];
+  counselor    -> laura [label="loves"];
+  westray      -> reiner [label="friend-of"];
+  westray      -> wireman2 [label="killed-by"];
+  counselor    -> reiner [label="friend-of"];
+  reiner       -> cartel [label="killed-by"];
+  wireman      -> malkina [label="works-for"];
+  wireman2     -> malkina [label="works-for"];
+  green_hornet -> wireman [label="killed-by"];
+  green_hornet -> jefe [label="works-for"];
+  jefe         -> cartel [label="works-for"];
+  laura        -> cartel [label="killed-by"];
+  wireman      -> cartel [label="killed-by"];
+}
