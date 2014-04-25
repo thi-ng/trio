@@ -6,11 +6,11 @@
 ** TODO Overview
 
 This project provides a simple, yet extensible and datatype agnostic
-triple store API & query engine for Clojure/ClojureScript. Triple
-stores are usually associated with Semantic Web & Linked Data
-applications, however encoding graphs as triples is natural too for a
-large number of other use cases and this library is aiming to address
-these.
+[[http://en.wikipedia.org/wiki/Triplestore][triple store]] API & [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for Clojure/ClojureScript.
+Triple stores are usually associated with [[http://en.wikipedia.org/wiki/Semantic_web][Semantic Web]] & [[http://en.wikipedia.org/wiki/Linked_Data][Linked Data]]
+applications, however encoding graphs as triples (or quads) is natural
+too for a large number of other use cases and this library is aiming
+to address these.
 
 ** Status
 
@@ -22,17 +22,23 @@ ALPHA quality, subject to frequent changes until further notice.
   (require
    '[thi.ng.trio.core :refer :all]
    '[thi.ng.trio.query :as q])
+#+END_SRC
 
-  ;; Some characters relations from the 2014 film "The Counselor"
-  ;; (contains spoilers!)
+[[../assets/counselor.png]]
 
-  ;; ds will hold a plain triple store
+#+BEGIN_SRC clojure
+  ;; ds will hold a plain triple store which accepts any datatype
+  ;; for its subjects, predicates & objects
+
+  ;; this API layer does NOT impose any RDF semantics or similar...
+  ;; these will be dealt with in the still unreleased thi.ng/sema library
+
   (def ds
     (add-many
      (plain-store)
      '[[reiner       loves     malkina]
        [laura        loves     counselor]
-       [councelor    loves     laura]
+       [counselor    loves     laura]
        [westray      friend-of reiner]
        [westray      killed-by wireman2]
        [counselor    friend-of reiner]
@@ -47,7 +53,7 @@ ALPHA quality, subject to frequent changes until further notice.
 
   ;; all subjects
   (subjects ds)
-  ;; (jefe green-hornet wireman2 wireman counselor westray councelor laura reiner)
+  ;; (jefe green-hornet wireman2 wireman counselor westray laura reiner)
 
   ;; all relations
   (predicates ds)
@@ -111,7 +117,7 @@ ALPHA quality, subject to frequent changes until further notice.
 
 
   ;; is malkina a murderer?
-  (q/select-join-from ds '[[?v killed-by malkina]])
+  (q/select-with-bindings ds '[?v killed-by malkina])
   ;; nil
 
 
