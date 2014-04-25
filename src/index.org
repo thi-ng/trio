@@ -7,10 +7,22 @@
 
 This project provides a simple, yet extensible and datatype agnostic
 [[http://en.wikipedia.org/wiki/Triplestore][triple store]] API & [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for Clojure/ClojureScript.
+This library is the result of extracting & refactoring non-RDF related
+functionality from the upcoming thi.ng/sema toolkit and make the
+underlying graph tools more accessible to a wider audience.
+
 Triple stores are usually associated with [[http://en.wikipedia.org/wiki/Semantic_web][Semantic Web]] & [[http://en.wikipedia.org/wiki/Linked_Data][Linked Data]]
 applications, however encoding graphs as triples (or quads) is natural
 too for a large number of other use cases and this library is aiming
-to address these.
+to address some of these. Altough currently only an in-memory store is
+available, the intention is to have a pluggable storage layer (a bit
+like Datomic). Some prototype implementations for Redis, CouchDB &
+Cassandra have been in development since last year (but currently
+stalled due to other priorities).
+
+The query engine too is far more fully featured than what the example
+below's letting on and more demos will be added in due course...
+
 
 ** Status
 
@@ -44,7 +56,7 @@ ALPHA quality, subject to frequent changes until further notice.
        [counselor    friend-of reiner]
        [reiner       killed-by cartel]
        [wireman      works-for malkina]
-       [wireman2      works-for malkina]
+       [wireman2     works-for malkina]
        [green-hornet killed-by wireman]
        [green-hornet works-for jefe]
        [jefe         works-for cartel]
