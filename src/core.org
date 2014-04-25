@@ -146,7 +146,8 @@ at once.
 *** Constructor
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
-    [] (PlainMemoryStore. {} {} {}))
+    ([] (PlainMemoryStore. {} {} {}))
+    ([& triples] (add-many (plain-store) triples)))
 #+END_SRC
 
 ** Multi-store dataset
