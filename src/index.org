@@ -5,15 +5,138 @@
 
 ** TODO Overview
 
-Generic triple store
+This project provides a simple, yet extensible and datatype agnostic
+triple store API & query engine for Clojure/ClojureScript. Triple
+stores are usually associated with Semantic Web & Linked Data
+applications, however encoding graphs as triples is natural too for a
+large number of other use cases and this library is aiming to address
+these.
 
-** TODO Status
-** TODO Example usage
+** Status
+
+ALPHA quality, subject to frequent changes until further notice.
+
+** Example usage
 
 #+BEGIN_SRC clojure
-  (require 'thi.ng.trio.core)
+  (require
+   '[thi.ng.trio.core :refer :all]
+   '[thi.ng.trio.query :as q])
 
-  ;; TODO some magic
+  ;; Some characters relations from the 2014 film "The Counselor"
+  ;; (contains spoilers!)
+
+  ;; ds will hold a plain triple store
+  (def ds
+    (add-many
+     (plain-store)
+     '[[reiner       loves     malkina]
+       [laura        loves     counselor]
+       [councelor    loves     laura]
+       [westray      friend-of reiner]
+       [westray      killed-by wireman2]
+       [counselor    friend-of reiner]
+       [reiner       killed-by cartel]
+       [wireman      works-for malkina]
+       [wireman2      works-for malkina]
+       [green-hornet killed-by wireman]
+       [green-hornet works-for jefe]
+       [jefe         works-for cartel]
+       [laura        killed-by cartel]
+       [wireman      killed-by cartel]]))
+
+  ;; all subjects
+  (subjects ds)
+  ;; (jefe green-hornet wireman2 wireman counselor westray councelor laura reiner)
+
+  ;; all relations
+  (predicates ds)
+  ;; (works-for killed-by friend-of loves)
+
+  ;; show all triples...
+  (select ds)
+  ;; ([jefe works-for cartel]
+  ;;  [green-hornet works-for jefe]
+  ;;  [green-hornet killed-by wireman]
+  ;;  [wireman2 works-for malkina]
+  ;;  [wireman killed-by cartel]
+  ;;  [wireman works-for malkina]
+  ;;  [counselor friend-of reiner]
+  ;;  [westray killed-by wireman2]
+  ;;  [westray friend-of reiner]
+  ;;  [councelor loves laura]
+  ;;  [laura killed-by cartel]
+  ;;  [laura loves counselor]
+  ;;  [reiner killed-by cartel]
+  ;;  [reiner loves malkina])
+
+
+  ;; all characters in love
+  (select ds nil 'loves nil)
+  ;; ([councelor loves laura] [laura loves counselor] [reiner loves malkina])
+
+
+  ;; all we know about malkina as object
+  (select ds nil nil 'malkina)
+  ;; ([wireman2 works-for malkina] [wireman works-for malkina] [reiner loves malkina])
+
+
+  ;; all cartel victims
+  (select ds nil 'killed-by 'cartel)
+  ;; ([laura killed-by cartel] [reiner killed-by cartel] [wireman killed-by cartel])
+
+
+  ;; now let's use query engine & bind some query variable(s)
+  (q/select-with-bindings ds '[?victim killed-by cartel] nil false)
+  ;; ({?victim laura} {?victim reiner} {?victim wireman})
+
+
+  ;; ...not just cartel victims & also include matched triples in result
+  (q/select-with-bindings ds '[?victim killed-by ?criminal])
+  ;; ({?criminal wireman,
+  ;;   ?victim green-hornet,
+  ;;   :__triples [[green-hornet killed-by wireman]]}
+  ;;  {?criminal cartel,
+  ;;   ?victim laura,
+  ;;   :__triples [[laura killed-by cartel]]}
+  ;;  {?criminal cartel,
+  ;;   ?victim reiner,
+  ;;   :__triples [[reiner killed-by cartel]]}
+  ;;  {?criminal cartel,
+  ;;   ?victim wireman,
+  ;;   :__triples [[wireman killed-by cartel]]}
+  ;;  {?criminal wireman2,
+  ;;   ?victim westray,
+  ;;   :__triples [[westray killed-by wireman2]]})
+
+
+  ;; is malkina a murderer?
+  (q/select-join-from ds '[[?v killed-by malkina]])
+  ;; nil
+
+
+  ;; ...doesn't look like it, but maybe she employed someone to do dirty
+  ;; work for her?
+  (q/select-join-from ds '[[?v killed-by ?m] [?m works-for malkina]])
+  ;; ({?v westray, ?m wireman2} {?v green-hornet, ?m wireman})
+
+
+  ;; ...bingo, we could also have written this as a property path query
+  (q/select-join-from ds (q/resolve-patterns '[[?v [killed-by works-for] ?m]]))
+  ;; ({?m malkina, ?v green-hornet, ?___q9910 wireman}
+  ;;  {?m malkina, ?v westray, ?___q9910 wireman2})
+
+
+  ;; let's also see who's the lover of the criminal, check if he/she died too
+  ;; and if victim & lover had any link to each other?
+  (->> '[[?victim [killed-by works-for] ?m]
+         [?lover loves ?m]
+         [?lover killed-by ?m2]
+         [?victim ?rel ?lover]]
+       (q/resolve-patterns)
+       (q/select-join-from ds)
+       (map #(select-keys % '[?victim ?lover ?rel ?m])))
+  ;; ({?m malkina, ?rel friend-of, ?lover reiner, ?victim westray})
 #+END_SRC
 
 ** License
