@@ -1,4 +1,4 @@
-#+SETUPFILE: "setup.org"
+#+SETUPFILE: setup.org
 
 * Namespace: thi.ng.trio.core
 

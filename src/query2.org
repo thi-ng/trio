@@ -1,0 +1,125 @@
+#+SETUPFILE: setup.org
+
+* Namespace: thi.ng.trio.query2
+
+** Helpers
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn make-qvar [& _] (gensym "?__"))
+
+  (defn unique-bindings?
+    [coll] (== (count (set (vals coll))) (count coll)))
+
+  (defn replace-result-qvars
+    [res kmap]
+    (reduce-kv
+     (fn [res k v]
+       (assoc res (set/rename-keys k kmap) v))
+     {} res))
+#+END_SRC
+
+** Join
+
+#+BEGIN_SRC clojure :noweb-ref joins
+  (defn join
+    [a b]
+    (let [ka (keys a)
+          kb (keys b)
+          vka (keys (first ka))
+          vkb (keys (first kb))]
+      (->> (set/join ka kb)
+           (r/map
+            (if (= vka vkb)
+              (fn [k]
+                (if (unique-bindings? k)
+                  (let [ks (select-keys k vka)
+                        sa (a ks)
+                        sb (b ks)]
+                    [k (if (< (count sa) (count sb))
+                         (into sb sa)
+                         (into sa sb))])))
+              (fn [k]
+                (if (unique-bindings? k)
+                  (let [sa (a (select-keys k vka))
+                        sb (b (select-keys k vkb))]
+                    [k (if (< (count sa) (count sb))
+                         (into sb sa)
+                         (into sa sb))])))))
+           (into {}))))
+#+END_SRC
+
+** Select
+
+#+BEGIN_SRC clojure :noweb-ref selectors
+  (defn select-with-bindings
+    [ds [s p o :as t] bindings]
+    (let [[vs? vp? vo?] (mapv q/qvar? t)
+          vm {}
+          [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
+          [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
+          [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
+          ks (keys vm)
+          verify (q/triple-verifier t [vs? vp? vo?])
+          res (->> (select ds qs qp qo)
+                   (r/map
+                    (fn [r]
+                      (if (verify r)
+                        (-> (select-keys r ks)
+                            (set/rename-keys vm)
+                            (vector #{r})))))
+                   (into {}))]
+      res))
+
+  (defn select-join
+    [ds [p & ps]]
+    (let [res (select-with-bindings ds p {})]
+      (if (seq res)
+        (loop [res res, ps ps]
+          (if ps
+            (let [r' (select-with-bindings ds (first ps) {})
+                  res (if (seq r') (join res r'))]
+              (if (seq res)
+                (recur res (next ps))))
+            res)))))
+
+  (defn select-path*
+    [ds [s p o* :as t] & {:keys [qvar] :or {qvar make-qvar}}]
+    (let [o (qvar 0)
+          res (select-with-bindings ds [s p o] {})]
+      (when (seq res)
+        (loop [res res, s o, i 1]
+          (let [o (qvar i)
+                r' (select-with-bindings ds [s p o] {})]
+            (if (seq r')
+              (let [res' (join res r')]
+                (if (seq res')
+                  (recur res' o (inc i))
+                  (replace-result-qvars res {s o*})))
+              (replace-result-qvars res {s o*})))))))
+#+END_SRC
+
+** Examples
+
+#+BEGIN_SRC clojure
+  (join
+   (select-path* ds '[?gp mother ?c] :qvar (fn [i] (symbol (str "?p" i))))
+   (select-with-bindings ds '[?sp spouse ?p0] {}))
+#+END_SRC
+
+** Complete namespace definition                                   :noexport:
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/query2.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.query2
+    (:require
+     [thi.ng.trio.core :refer :all]
+     [thi.ng.trio.query :as q]
+     [thi.ng.common.data.core :as d]
+     [thi.ng.common.data.unionfind :as uf]
+     [clojure.set :as set]
+     [clojure.core.reducers :as r]))
+
+  <<helpers>>
+
+  <<joins>>
+
+  <<selectors>>
+#+END_SRC

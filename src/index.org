@@ -1,4 +1,4 @@
-#+SETUPFILE: "setup.org"
+#+SETUPFILE: setup.org
 #+TITLE: thi.ng/trio
 
 * About the project
@@ -289,6 +289,8 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
 
     :source-paths ["src/cljx"]
     :test-paths ["<<gen-test-path>>"]
+
+    :jvm-opts ^:replace []
 
     :profiles {:dev {:dependencies [<<dep-cljs>>
                                     <<dep-criterium>>]
