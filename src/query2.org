@@ -5,17 +5,74 @@
 ** Helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (defn make-qvar [& _] (gensym "?__"))
+  (defn qvar?
+    [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))
+
+  (defn make-qvar [] (gensym "?__q"))
+
+  (defn resolve-prop-path-pattern
+    [[s p o]]
+    (let [vars (->> make-qvar
+                    (repeatedly (dec (count p)))
+                    (cons s))]
+      (->> (concat (interleave vars p) [o])
+           (d/successive-nth 3 2))))
 
   (defn unique-bindings?
     [coll] (== (count (set (vals coll))) (count coll)))
 
-  (defn replace-result-qvars
-    [res kmap]
+  (defn accumulate-result-vars
+    [res]
+    (reduce
+     (fn [acc b]
+       (merge-with
+        (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
+        acc b))
+     (keys res)))
+
+  (defn replace-result-vars
+    "Takes a result map, a map of qvars to rename and a seq of qvars to remove.
+      Returns updated result map."
+    [res kmap rkeys]
     (reduce-kv
      (fn [res k v]
-       (assoc res (set/rename-keys k kmap) v))
+       (let [k (reduce dissoc k rkeys)]
+         (assoc res (set/rename-keys k kmap) v)))
      {} res))
+
+  (defn select-renamed-keys
+    [map aliases]
+    (loop [ret {}, keys aliases]
+      (if keys
+        (let [kv (first keys)
+              entry (. clojure.lang.RT (find map (key kv)))]
+          (recur
+           (if entry
+             (conj ret [(val kv) (val entry)])
+             ret)
+           (next keys)))
+        ret)))
+
+  (defn triples->dot
+    [triples]
+    (apply
+     str
+     (concat
+      "digraph G {\n"
+      "node[color=\"black\",style=\"filled\",fontname=\"Inconsolata\",fontcolor=\"white\"];\n"
+      "edge[fontname=\"Inconsolata\",fontsize=\"9\"];\n"
+      (map
+       (fn [[s p o]]
+         (str "\"" (pr-str s) "\" -> \"" (pr-str o) "\" [label=\"" (pr-str p) "\"];\n"))
+       triples)
+      "}")))
+
+  (defn results->dot
+    [res]
+    (->> res
+         (mapcat val)
+         (set)
+         (triples->dot)))
 #+END_SRC
 
 ** Join
@@ -58,17 +115,13 @@
           [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
           [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
           [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
-          ks (keys vm)
-          verify (q/triple-verifier t [vs? vp? vo?])
-          res (->> (select ds qs qp qo)
-                   (r/map
-                    (fn [r]
-                      (if (verify r)
-                        (-> (select-keys r ks)
-                            (set/rename-keys vm)
-                            (vector #{r})))))
-                   (into {}))]
-      res))
+          verify (q/triple-verifier t [vs? vp? vo?])]
+      (->> (select ds qs qp qo)
+           (r/map
+            (fn [r]
+              (if (verify r)
+                [(select-renamed-keys r vm) #{r}])))
+           (into {}))))
 
   (defn select-join
     [ds [p & ps]]
@@ -82,27 +135,102 @@
                 (recur res (next ps))))
             res)))))
 
-  (defn select-path*
-    [ds [s p o* :as t] & {:keys [qvar] :or {qvar make-qvar}}]
-    (let [o (qvar 0)
+  (defn select-transitive
+    "Takes a PModel, a triple pattern and min/max search limits.
+    The pattern's subject & object must be qvars, the predicate
+    should be a transitive property. The fn tries to recursively
+    find this pattern up to the given max search depth. The subject
+    of the first and the object of the last matched pattern are then
+    bound to the given qvars. Returns result map or empty map if no
+    path of minimum length is found."
+    [ds [s p o* :as t] min max]
+    (let [o (make-qvar)
           res (select-with-bindings ds [s p o] {})]
       (when (seq res)
-        (loop [res res, s o, i 1]
-          (let [o (qvar i)
-                r' (select-with-bindings ds [s p o] {})]
-            (if (seq r')
-              (let [res' (join res r')]
-                (if (seq res')
-                  (recur res' o (inc i))
-                  (replace-result-qvars res {s o*})))
-              (replace-result-qvars res {s o*})))))))
+        (loop [res res, s o, i 1, ik []]
+          (if (< i max)
+            (let [o (make-qvar)
+                  r' (select-with-bindings ds [s p o] {})]
+              (if (seq r')
+                (let [res' (join res r')]
+                  (if (seq res')
+                    (recur res' o (inc i) (conj ik s))
+                    (if (>= i min)
+                      (replace-result-vars res {s o*} ik)
+                      {})))
+                (replace-result-vars res {s o*} ik)))
+            (replace-result-vars res {s o*} ik))))))
+#+END_SRC
+
+** Depth-first search
+
+If same min/max search depth, resort to select-join with expanded pattern
+In that case predicate can be a seq [pred1 pred2 ..] which is
+expanded cyclically for max-depth hops, e.g:
+
+ : (dfs-forward ds '[?s [mother father] ?o] 3 3)
+
+Else, the fn takes a standard pattern with the subject either a given
+constant or qvar. Pattern's object *must* be a qvar:
+
+Select all 'mother' rels from 1 - 3 hops (i.e. from mother -> great-grandmother)
+ : (dfs-forward ds '[?s mother ?c] 1 3)
+
+Select only children & grandchildren for given person:
+
+ : (dfs-forward ds '[john father ?c] 2 2)
+
+#+BEGIN_SRC clojure :noweb-ref dfs
+  (defn subvec-slices
+    "Takes a min & max count and returns function with"
+    [n1 n2]
+    (fn [paths]
+      (mapcat
+       (fn [path]
+         (map #(subvec path 0 %)
+              (range n1 (inc (min (count path) n2)))))
+       paths)))
+
+  (defn dfs-forward*
+    [ds s p sv acc min max]
+    (if (<= (count acc) max)
+      (let [acc (conj acc sv)
+            o (make-qvar)
+            r (select-with-bindings ds [s p o] {s sv})]
+        (if (seq r)
+          (mapcat #(dfs-forward* ds o p % acc min max)
+                  (set (map o (keys r))))
+          (if (> (count acc) min) [acc])))
+      [acc]))
+
+  (defn dfs-forward
+    [ds [s p o] mind maxd]
+    (let [o' (make-qvar)
+          [?s bmap bfn] (if (qvar? s)
+                          [s {} (fn [p] {s (first p) o (peek p)})]
+                          (let [?s (make-qvar)]
+                            [?s {?s s} (fn [p] {o (peek p)})]))
+          mind (max mind 1)
+          maxd (max maxd 1)]
+      (if (= mind maxd)
+        (let [p (if (sequential? p) p [p])
+              p (take mind (cycle p))]
+          (select-join ds (resolve-prop-path-pattern [s p o])))
+        (->> (select-with-bindings ds [?s p o'] bmap)
+             (keys)
+             (map #(vector (% ?s) (% o')))
+             (mapcat #(dfs-forward* ds ?s p (% 1) [(% 0)] mind maxd))
+             ((subvec-slices (inc mind) (inc maxd)))
+             (set)
+             (map #(vector (bfn %) #{}))
+             (into (hash-map))))))
 #+END_SRC
 
 ** Examples
 
 #+BEGIN_SRC clojure
   (join
-   (select-path* ds '[?gp mother ?c] :qvar (fn [i] (symbol (str "?p" i))))
+   (select-transitive ds '[?gp mother ?c] 0 100)
    (select-with-bindings ds '[?sp spouse ?p0] {}))
 #+END_SRC
 
@@ -122,4 +250,6 @@
   <<joins>>
 
   <<selectors>>
+
+  <<dfs>>
 #+END_SRC
