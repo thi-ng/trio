@@ -32,6 +32,10 @@
         acc b))
      (keys res)))
 
+  (defn accumulate-var-triples
+    [?v v res]
+    (mapcat val (filter (fn [[k]] (= v (k ?v))) res)))
+
   (defn replace-result-vars
     "Takes a result map, a map of qvars to rename and a seq of qvars to remove.
       Returns updated result map."
@@ -201,7 +205,7 @@ Select only children & grandchildren for given person:
         (if (seq r)
           (mapcat
            (fn [ov]
-             (let [t (mapcat val (filter (fn [[k]] (= ov (k o))) r))]
+             (let [t (accumulate-var-triples o ov r)]
                (dfs-forward* ds o p ov acc (into triples t) min max)))
            (set (map o (keys r))))
           (if (> (count acc) min) [[acc triples]])))
@@ -216,7 +220,7 @@ Select only children & grandchildren for given person:
         (if (seq r)
           (mapcat
            (fn [sv]
-             (let [t (mapcat val (filter (fn [[k]] (= sv (k s))) r))]
+             (let [t (accumulate-var-triples s sv r)]
                (dfs-backward* ds s p sv acc (into triples t) min max)))
            (set (map s (keys r))))
           (if (> (count acc) min) [[acc triples]])))
@@ -261,13 +265,10 @@ Select only children & grandchildren for given person:
                  slices-t (subvec-slices mind maxd)
                  slices (fn [[k t]] (map vector (slices-k k) (slices-t t)))]
              (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf))
-                  ;;(trace :res)
                   (map (:lookup conf))
                   (mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
-                  ;;(trace :dfs)
                   (mapcat slices)
                   (into {})
-                  ;;(trace :slice)
                   (map bind)
                   (into (hash-map))))))))
 #+END_SRC
