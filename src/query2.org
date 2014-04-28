@@ -182,14 +182,13 @@ Select only children & grandchildren for given person:
 
 #+BEGIN_SRC clojure :noweb-ref dfs
   (defn subvec-slices
-    "Takes a min & max count and returns function with"
+    "Takes a min & max count and returns function accepting a vector as
+    single arg. When called, returns lazyseq of subvec slices each starting
+    at index 0 and with an increasing length from min to max."
     [n1 n2]
-    (fn [paths]
-      (mapcat
-       (fn [path]
-         (map #(subvec path 0 %)
-              (range n1 (inc (min (count path) n2)))))
-       paths)))
+    (fn [path]
+      (map #(subvec path 0 %)
+           (range n1 (inc (min (count path) n2))))))
 
   (defn dfs-forward*
     [ds s p sv acc min max]
@@ -220,7 +219,42 @@ Select only children & grandchildren for given person:
              (keys)
              (map #(vector (% ?s) (% o')))
              (mapcat #(dfs-forward* ds ?s p (% 1) [(% 0)] mind maxd))
-             ((subvec-slices (inc mind) (inc maxd)))
+             (mapcat (subvec-slices (inc mind) (inc maxd)))
+             (set)
+             (map #(vector (bfn %) #{}))
+             (into (hash-map))))))
+
+  (defn dfs-backward*
+    [ds o p ov acc min max]
+    (if (<= (count acc) max)
+      (let [acc (conj acc ov)
+            s (make-qvar)
+            r (select-with-bindings ds [s p o] {o ov})]
+        (prn o p ov acc)
+        (if (seq r)
+          (mapcat #(dfs-backward* ds s p % acc min max)
+                  (set (map s (keys r))))
+          (if (> (count acc) min) [acc])))
+      [acc]))
+
+  (defn dfs-backward
+    [ds [s p o] mind maxd]
+    (let [s' (make-qvar)
+          [?o bmap bfn] (if (qvar? o)
+                          [o {} (fn [p] {s (peek p) o (first p)})]
+                          (let [?o (make-qvar)]
+                            [?o {?o o} (fn [p] {s (peek p)})]))
+          mind (max mind 1)
+          maxd (max maxd 1)]
+      (if (= mind maxd)
+        (let [p (if (sequential? p) p [p])
+              p (take mind (cycle p))]
+          (select-join ds (resolve-prop-path-pattern [s p o])))
+        (->> (select-with-bindings ds [s' p ?o] bmap)
+             (keys)
+             (map #(vector (% s') (% ?o)))
+             (mapcat #(dfs-backward* ds s' p (% 0) [(% 1)] mind maxd))
+             (mapcat (subvec-slices (inc mind) (inc maxd)))
              (set)
              (map #(vector (bfn %) #{}))
              (into (hash-map))))))
@@ -232,6 +266,14 @@ Select only children & grandchildren for given person:
   (join
    (select-transitive ds '[?gp mother ?c] 0 100)
    (select-with-bindings ds '[?sp spouse ?p0] {}))
+
+  (require
+   '[thi.ng.trio.core :refer :all]
+   '[thi.ng.trio.query2 :as q])
+
+  (def ds (apply plain-store (read-string (slurp "../dev/schmidts.clj"))))
+
+  (spit "schmidts.dot" (q/results->dot (q/dfs-forward ds '[?s [mother father] ?c] 2 2)))
 #+END_SRC
 
 ** Complete namespace definition                                   :noexport:
