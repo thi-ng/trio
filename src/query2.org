@@ -5,7 +5,7 @@
 ** Helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (defn trace [id _] (dorun _) (prn id _) _)
+  (defn trace [id _] (dorun _) (prn "----") (prn id _) _)
 
   (defn qvar?
     [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))
@@ -193,29 +193,34 @@ Select only children & grandchildren for given person:
            (range n1 (inc (min (count path) n2))))))
 
   (defn dfs-forward*
-    [ds s p sv acc min max]
+    [ds s p sv acc triples min max]
     (if (<= (count acc) max)
       (let [acc (conj acc sv)
             o (make-qvar)
             r (select-with-bindings ds [s p o] {s sv})]
         (if (seq r)
-          (mapcat #(dfs-forward* ds o p % acc min max)
-                  (set (map o (keys r))))
-          (if (> (count acc) min) [acc])))
-      [acc]))
+          (mapcat
+           (fn [ov]
+             (let [t (mapcat val (filter (fn [[k]] (= ov (k o))) r))]
+               (dfs-forward* ds o p ov acc (into triples t) min max)))
+           (set (map o (keys r))))
+          (if (> (count acc) min) [[acc triples]])))
+      [[acc triples]]))
 
   (defn dfs-backward*
-    [ds o p ov acc min max]
+    [ds o p ov acc triples min max]
     (if (<= (count acc) max)
       (let [acc (conj acc ov)
             s (make-qvar)
             r (select-with-bindings ds [s p o] {o ov})]
-        (prn o p ov acc)
         (if (seq r)
-          (mapcat #(dfs-backward* ds s p % acc min max)
-                  (set (map s (keys r))))
-          (if (> (count acc) min) [acc])))
-      [acc]))
+          (mapcat
+           (fn [sv]
+             (let [t (mapcat val (filter (fn [[k]] (= sv (k s))) r))]
+               (dfs-backward* ds s p sv acc (into triples t) min max)))
+           (set (map s (keys r))))
+          (if (> (count acc) min) [[acc triples]])))
+      [[acc triples]]))
 
   (defn dfs
     ([ds [s p o :as t]]
@@ -236,29 +241,34 @@ Select only children & grandchildren for given person:
                        (and vs? vo?) {:s s ;; [?s p ?o]
                                       :o v
                                       :bmap {}
-                                      :lookup (fn [b] [(b s) (b v)])
-                                      :bind (fn [p] {s (first p) o (peek p)})
+                                      :lookup (fn [[b t]] [(b s) (b v) t])
+                                      :bind (fn [[p t]] [{s (first p) o (peek p)} (set t)])
                                       :search dfs-forward*}
                        vo?           {:s v ;; [x p ?o]
                                       :o o
                                       :bmap {v s}
-                                      :lookup (fn [b] [(b v) (b o)])
-                                      :bind (fn [p] {o (peek p)})
+                                      :lookup (fn [[b t]] [(b v) (b o) t])
+                                      :bind (fn [[p t]] [{o (peek p)} (set t)])
                                       :search dfs-forward*}
                        vs?           {:s s ;; [?s p x]
                                       :o v
                                       :bmap {v o}
-                                      :lookup (fn [b] [(b v) (b s)])
-                                      :bind (fn [p] {s (peek p)})
+                                      :lookup (fn [[b t]] [(b v) (b s) t])
+                                      :bind (fn [[p t]] [{s (peek p)} (set t)])
                                       :search dfs-backward*})
-                 {:keys [bind search]} conf]
+                 {:keys [bind search]} conf
+                 slices-k (subvec-slices (inc mind) (inc maxd))
+                 slices-t (subvec-slices mind maxd)
+                 slices (fn [[k t]] (map vector (slices-k k) (slices-t t)))]
              (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf))
-                  (keys)
+                  ;;(trace :res)
                   (map (:lookup conf))
-                  (mapcat #(search ds v p (% 1) [(% 0)] mind maxd))
-                  (mapcat (subvec-slices (inc mind) (inc maxd)))
-                  (set)
-                  (map #(vector (bind %) #{}))
+                  (mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
+                  ;;(trace :dfs)
+                  (mapcat slices)
+                  (into {})
+                  ;;(trace :slice)
+                  (map bind)
                   (into (hash-map))))))))
 #+END_SRC
 
