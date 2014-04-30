@@ -563,6 +563,114 @@ of the code.
              spo))))))
 #+END_SRC
 
+*** Alt implementation
+#+BEGIN_SRC clojure :noweb-ref memstore
+  (defrecord PlainMemoryStore2 [spo pos ops size]
+    PStatementAccess
+    (add-statement
+      [_ [s p o :as t]]
+      (if (-> spo (get s nil) (get p nil) (get t nil))
+        _
+        (let [s (get (find spo s) 0 s)
+              p (get (find pos p) 0 p)
+              o (get (find ops o) 0 o)
+              t (Triple. s p o nil)]
+          (PlainMemoryStore2.
+           (update-in spo [s p] d/set-conj t)
+           (update-in pos [p o] d/set-conj t)
+           (update-in ops [o p] d/set-conj t)
+           (inc size)))))
+    (add-bulk [_ statements]
+      (loop [changed? false, spo spo, pos pos, ops ops, size size, xs statements]
+        (if xs
+          (let [[s p o :as t] (first xs)]
+            (if (-> spo (get s nil) (get p nil) (get t nil))
+              (recur changed? spo pos ops size (next xs))
+              (let [s (get (find spo s) 0 s)
+                    p (get (find pos p) 0 p)
+                    o (get (find ops o) 0 o)
+                    t (Triple. s p o nil)]
+                (recur
+                 true
+                 (update-in spo [s p] d/set-conj t)
+                 (update-in pos [p o] d/set-conj t)
+                 (update-in ops [o p] d/set-conj t)
+                 (inc size)
+                 (next xs)))))
+          (if changed?
+            (PlainMemoryStore2. spo pos ops size)
+            _))))
+    (remove-statement [_ [s p o :as t]]
+      (if (-> spo (get s nil) (get p nil) (get t nil))
+        (PlainMemoryStore2.
+         (remove-from-index spo s p t)
+         (remove-from-index pos p o t)
+         (remove-from-index ops o p t)
+         (dec size))
+        _))
+    (remove-bulk [_ statements]
+      (loop [changed? false, spo spo, pos pos, ops ops, size size, xs statements]
+        (if xs
+          (let [[s p o :as t] (first xs)]
+            (if (-> spo (get s nil) (get p nil) (get t nil))
+              (recur
+               true
+               (remove-from-index spo s p t)
+               (remove-from-index pos p o t)
+               (remove-from-index ops o p t)
+               (dec size)
+               (next xs))
+              (recur changed? spo pos ops size (next xs))))
+          (if changed?
+            (PlainMemoryStore2. spo pos ops size)
+            _))))
+    (update-statement [_ s1 s2]
+      (add-statement (remove-statement _ s1) s2))
+    (remove-subject [_ s]
+      (remove-bulk _ (select _ s nil nil)))
+
+    PModel
+    (subject? [_ x]
+      (if (spo x) x))
+    (predicate? [_ x]
+      (if (pos x) x))
+    (object? [_ x]
+      (if (ops x) x))
+    (indexed? [_ x]
+      (if (or (spo x) (pos x) (ops x)) x))
+    (subjects [_] (keys spo))
+    (predicates [_] (keys pos))
+    (objects [_] (keys ops))
+    (model-size [_] size)
+    (select [_]
+      (select _ nil nil nil))
+    (select
+      [_ s p o]
+      (if s
+        (if p
+          (if o
+            ;; s p o
+            (let [t (triple s p o)]
+              (if (-> spo (get s nil) (get p nil) (get t nil)) [t]))
+            ;; s p nil
+            (-> spo (get s nil) (get p nil)))
+          ;; s nil o / s nil nil
+          (if o
+            (->> (spo s) vals (apply concat) (filter #(= o (% 2))))
+            (->> (spo s) vals (apply concat))))
+        (if p
+          (if o
+            ;; nil p o
+            (-> pos (get p nil) (get o nil))
+            ;; nil p nil
+            (->> (pos p) vals (apply concat)))
+          (if o
+            ;; nil nil o
+            (->> (ops o) vals (apply concat))
+            ;; nil nil nil
+            (mapcat #(->> % vals (mapcat identity)) (vals spo)))))))
+#+END_SRC
+
 *** Constructor
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
