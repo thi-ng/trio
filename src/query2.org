@@ -32,24 +32,82 @@
   (defn unique-bindings?
     "Returns true if all values in the given map are unique, i.e.
     no two keys are mapped to the same value."
-    [coll] (== (count (set (vals coll))) (count coll)))
+    [map] (== (count (into #{} (vals map))) (count map)))
+
+  (defn produce-patterns-with-bound-vars
+    "Takes a triple pattern (possibly with variables) and a map of
+    possible value sets (each *must* be a set or single value) for each var.
+    Produces lazy seq of resulting triple query patterns using cartesian
+    product of all values.
+
+        (produce-patterns-with-bound-vars
+          [?a :type ?b]
+          {?a #{\"me\" \"you\"} ?b #{\"foo\" \"bar\"})
+        => ((\"me\" :type \"foo\") (\"me\" :type \"bar\")
+            (\"you\" :type \"foo\") (\"you\" :type \"bar\"))"
+    [[s p o] bindings]
+    (let [s (or (bindings s) s)
+          p (or (bindings p) p)
+          o (or (bindings o) o)]
+      (if (some set? [s p o])
+        (d/cartesian-product
+         (if (set? s) s #{s}) (if (set? p) p #{p}) (if (set? o) o #{o}))
+        [[s p o]])))
+
+  (defn sort-patterns
+    "Sorts a seq of triple patterns in dependency order using any
+    re-occuring vars. Triples with least qvars will be in head
+    position."
+    [patterns]
+    (let [q (map #(let [v (d/filter-tree qvar? %)] [(count v) v %]) patterns)
+          singles (->> q (filter #(= 1 (first %))) (mapcat second) set)]
+      (->> q
+           (sort-by (fn [[c v]] (- (* c 4) (count (filter singles v)))))
+           (map peek))))
+
+  (defn triple-verifier
+    "Takes a triple pattern (potentially with vars) and a 3-elem boolean
+    vector to indicate which SPO is a var. Returns fn which accepts a
+    result triple and returns false if any of the vars clash (e.g. a var
+    is used multiple times but result has different values in each position
+    or likewise, if different vars relate to same values)."
+    [[ts tp to] [vars varp varo]]
+    (cond
+     (and vars varp varo) (cond
+                           (= ts tp to) (fn [[rs rp ro]] (= rs rp ro))
+                           (= ts tp) (fn [[rs rp ro]] (and (= rs rp) (not= rs ro)))
+                           (= ts to) (fn [[rs rp ro]] (and (= rs ro) (not= rs rp)))
+                           (= tp to) (fn [[rs rp ro]] (and (= rp ro) (not= rs rp)))
+                           :default (constantly true))
+     (and vars varp) (if (= ts tp)
+                       (fn [[rs rp]] (= rs rp))
+                       (fn [[rs rp]] (not= rs rp)))
+     (and vars varo) (if (= ts to)
+                       (fn [[rs _ ro]] (= rs ro))
+                       (fn [[rs _ ro]] (not= rs ro)))
+     (and varp varo) (if (= tp to)
+                       (fn [[_ rp ro]] (= rp ro))
+                       (fn [[_ rp ro]] (not= rp ro)))
+     :default (constantly true)))
 
   (defn accumulate-result-vars
     "Takes a query result map and returns map of all found qvars
     as keys and their value sets."
-    [res]
-    (reduce
-     (fn [acc b]
-       (merge-with
-        (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
-        acc b))
-     (keys res)))
+    ([res] (accumulate-result-vars {} nil res))
+    ([acc vars res]
+       (reduce
+        (fn [acc b]
+          (merge-with
+           (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
+           acc (if vars (select-keys b vars) b)))
+        acc (keys res))))
 
   (defn accumulate-var-triples
     "Takes a qvar, a value for that var and a query result map.
     Returns reducible of all triples for which the qvar has given value."
     [?v v res]
-    (r/mapcat val (r/filter (fn [[k]] (= v (k ?v))) res)))
+    (#+clj r/mapcat #+cljs mapcat val
+           (#+clj r/filter #+cljs filter (fn [[k]] (= v (k ?v))) res)))
 
   (defn replace-result-vars
     "Takes a result map, a map of qvars to rename and a seq of qvars to remove.
@@ -69,7 +127,7 @@
     (loop [ret {}, keys aliases]
       (if keys
         (let [kv (first keys)
-              entry (. clojure.lang.RT (find map (key kv)))]
+              entry (find map (key kv))]
           (recur
            (if entry
              (conj ret [(val kv) (val entry)])
@@ -110,7 +168,7 @@
           vka (keys (first ka))
           vkb (keys (first kb))]
       (->> (set/join ka kb)
-           (r/map
+           (#+clj r/map #+cljs map
             (if (= vka vkb)
               (fn [k]
                 (if (unique-bindings? k)
@@ -135,22 +193,27 @@
 #+BEGIN_SRC clojure :noweb-ref selectors
   (defn select-with-bindings
     [ds [s p o :as t] bindings]
-    (let [[vs? vp? vo?] (mapv q/qvar? t)
+    (let [[vs? vp? vo?] (mapv qvar? t)
           vm {}
           [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
           [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
           [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
-          verify (q/triple-verifier t [vs? vp? vo?])]
-      (->> (select ds qs qp qo)
-           (r/map
-            (fn [r]
-              (if (verify r)
-                [(select-renamed-keys r vm) #{r}])))
-           (into {}))))
+          res (api/select ds qs qp qo)]
+      (if (seq res)
+        (let [verify (triple-verifier t [vs? vp? vo?])]
+          (->> res
+               (#+clj r/map #+cljs map
+                (fn [r]
+                  (if (verify r)
+                    [(select-renamed-keys r vm) #{r}])))
+               (into {})))
+        {})))
 
   (defn select-join
-    [ds [p & ps]]
-    (let [res (select-with-bindings ds p {})]
+    [ds patterns]
+    (let [[p & ps] (sort-patterns patterns)
+          res (select-with-bindings ds p {})]
+      ;;(prn p ps)
       (if (seq res)
         (loop [res res, ps ps]
           (if ps
@@ -225,7 +288,7 @@ Select only children & grandchildren for given person:
             o (make-qvar)
             r (select-with-bindings ds [s p o] {s sv})]
         (if (seq r)
-          (r/mapcat
+          (#+clj r/mapcat #+cljs mapcat
            (fn [ov]
              (let [t (accumulate-var-triples o ov r)]
                (dfs-forward* ds o p ov acc (into triples t) min max)))
@@ -240,7 +303,7 @@ Select only children & grandchildren for given person:
             s (make-qvar)
             r (select-with-bindings ds [s p o] {o ov})]
         (if (seq r)
-          (r/mapcat
+          (#+clj r/mapcat #+cljs mapcat
            (fn [sv]
              (let [t (accumulate-var-triples s sv r)]
                (dfs-backward* ds s p sv acc (into triples t) min max)))
@@ -287,11 +350,11 @@ Select only children & grandchildren for given person:
                  slices-t (subvec-slices mind maxd)
                  slices (fn [[k t]] (map vector (slices-k k) (slices-t t)))]
              (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf))
-                  (r/map (:lookup conf))
-                  (r/mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
-                  (r/mapcat slices)
+                  (#+clj r/map    #+cljs map    (:lookup conf))
+                  (#+clj r/mapcat #+cljs mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
+                  (#+clj r/mapcat #+cljs mapcat slices)
                   (into {})
-                  (r/map bind)
+                  (#+clj r/map    #+cljs map    bind)
                   (into (hash-map))))))))
 #+END_SRC
 
@@ -315,12 +378,11 @@ Select only children & grandchildren for given person:
 #+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/query2.cljx :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.query2
     (:require
-     [thi.ng.trio.core :refer :all]
-     [thi.ng.trio.query :as q]
+     [thi.ng.trio.core :as api]
      [thi.ng.common.data.core :as d]
      [thi.ng.common.data.unionfind :as uf]
      [clojure.set :as set]
-     [clojure.core.reducers :as r]))
+     #+clj [clojure.core.reducers :as r]))
 
   <<helpers>>
 
