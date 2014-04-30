@@ -668,14 +668,18 @@ of the code.
             ;; nil nil o
             (->> (ops o) vals (apply concat))
             ;; nil nil nil
-            (mapcat #(->> % vals (mapcat identity)) (vals spo)))))))
+            (->> spo vals (mapcat vals) (apply concat)))))))
 #+END_SRC
 
-*** Constructor
+*** Constructors
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
     [& triples]
     (add-bulk (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
+
+  (defn plain-store-alt
+    [& triples]
+    (add-bulk (PlainMemoryStore2. (hash-map) (hash-map) (hash-map) 0) triples))
 #+END_SRC
 
 ** Multi-store dataset
