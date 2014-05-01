@@ -565,7 +565,7 @@ of the code.
 
 *** Alt implementation
 #+BEGIN_SRC clojure :noweb-ref memstore
-  (defrecord PlainMemoryStore2 [spo pos ops size]
+  (defrecord PlainMemoryStore2 [spo pos osp size]
     PStatementAccess
     (add-statement
       [_ [s p o :as t]]
@@ -573,43 +573,43 @@ of the code.
         _
         (let [s (get (find spo s) 0 s)
               p (get (find pos p) 0 p)
-              o (get (find ops o) 0 o)
+              o (get (find osp o) 0 o)
               t (Triple. s p o nil)]
           (PlainMemoryStore2.
            (update-in spo [s p] d/set-conj t)
            (update-in pos [p o] d/set-conj t)
-           (update-in ops [o p] d/set-conj t)
+           (update-in osp [o s] d/set-conj t)
            (inc size)))))
     (add-bulk [_ statements]
-      (loop [changed? false, spo spo, pos pos, ops ops, size size, xs statements]
+      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs statements]
         (if xs
           (let [[s p o :as t] (first xs)]
             (if (-> spo (get s nil) (get p nil) (get t nil))
-              (recur changed? spo pos ops size (next xs))
+              (recur changed? spo pos osp size (next xs))
               (let [s (get (find spo s) 0 s)
                     p (get (find pos p) 0 p)
-                    o (get (find ops o) 0 o)
+                    o (get (find osp o) 0 o)
                     t (Triple. s p o nil)]
                 (recur
                  true
                  (update-in spo [s p] d/set-conj t)
                  (update-in pos [p o] d/set-conj t)
-                 (update-in ops [o p] d/set-conj t)
+                 (update-in osp [o s] d/set-conj t)
                  (inc size)
                  (next xs)))))
           (if changed?
-            (PlainMemoryStore2. spo pos ops size)
+            (PlainMemoryStore2. spo pos osp size)
             _))))
     (remove-statement [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil))
         (PlainMemoryStore2.
          (remove-from-index spo s p t)
          (remove-from-index pos p o t)
-         (remove-from-index ops o p t)
+         (remove-from-index osp o s t)
          (dec size))
         _))
     (remove-bulk [_ statements]
-      (loop [changed? false, spo spo, pos pos, ops ops, size size, xs statements]
+      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs statements]
         (if xs
           (let [[s p o :as t] (first xs)]
             (if (-> spo (get s nil) (get p nil) (get t nil))
@@ -617,12 +617,12 @@ of the code.
                true
                (remove-from-index spo s p t)
                (remove-from-index pos p o t)
-               (remove-from-index ops o p t)
+               (remove-from-index osp o s t)
                (dec size)
                (next xs))
-              (recur changed? spo pos ops size (next xs))))
+              (recur changed? spo pos osp size (next xs))))
           (if changed?
-            (PlainMemoryStore2. spo pos ops size)
+            (PlainMemoryStore2. spo pos osp size)
             _))))
     (update-statement [_ s1 s2]
       (add-statement (remove-statement _ s1) s2))
@@ -635,12 +635,12 @@ of the code.
     (predicate? [_ x]
       (if (pos x) x))
     (object? [_ x]
-      (if (ops x) x))
+      (if (osp x) x))
     (indexed? [_ x]
-      (if (or (spo x) (pos x) (ops x)) x))
+      (if (or (spo x) (pos x) (osp x)) x))
     (subjects [_] (keys spo))
     (predicates [_] (keys pos))
-    (objects [_] (keys ops))
+    (objects [_] (keys osp))
     (model-size [_] size)
     (select [_]
       (select _ nil nil nil))
@@ -656,7 +656,7 @@ of the code.
             (-> spo (get s nil) (get p nil)))
           ;; s nil o / s nil nil
           (if o
-            (->> (spo s) vals (apply concat) (filter #(= o (% 2))))
+            (-> osp (get o nil) (get s nil))
             (->> (spo s) vals (apply concat))))
         (if p
           (if o
@@ -666,7 +666,7 @@ of the code.
             (->> (pos p) vals (apply concat)))
           (if o
             ;; nil nil o
-            (->> (ops o) vals (apply concat))
+            (->> (osp o) vals (apply concat))
             ;; nil nil nil
             (->> spo vals (mapcat vals) (apply concat)))))))
 #+END_SRC
