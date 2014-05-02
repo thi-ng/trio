@@ -192,7 +192,7 @@
 
 #+BEGIN_SRC clojure :noweb-ref selectors
   (defn select-with-bindings
-    [ds [s p o :as t] bindings]
+    [ds [s p o :as t] bindings opts]
     (let [[vs? vp? vo?] (mapv qvar? t)
           vm {}
           [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
@@ -200,28 +200,35 @@
           [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
           res (api/select ds qs qp qo)]
       (if (seq res)
-        (let [verify (triple-verifier t [vs? vp? vo?])]
+        (let [verify (triple-verifier t [vs? vp? vo?])
+              flt (opts :filter)
+              res-fn (if flt
+                       #(if (verify %)
+                          (let [vbinds (select-renamed-keys % vm)]
+                            (if (flt vbinds)
+                              [vbinds #{%}])))
+                       #(if (verify %)
+                          [(select-renamed-keys % vm) #{%}]))]
           (->> res
-               (#+clj r/map #+cljs map
-                (fn [r]
-                  (if (verify r)
-                    [(select-renamed-keys r vm) #{r}])))
+               (#+clj r/map #+cljs map res-fn)
                (into {})))
         {})))
 
   (defn select-join
-    [ds patterns]
+    [ds patterns bindings {bind :bind flt :filter}]
     (let [[p & ps] (sort-patterns patterns)
-          res (select-with-bindings ds p {})]
+          res (select-with-bindings ds p bindings {})]
       ;;(prn p ps)
       (if (seq res)
         (loop [res res, ps ps]
           (if ps
-            (let [r' (select-with-bindings ds (first ps) {})
+            (let [r' (select-with-bindings ds (first ps) bindings {})
                   res (if (seq r') (join res r'))]
               (if (seq res)
                 (recur res (next ps))))
-            res)))))
+            (cond-> res
+                    flt (->> (filter (fn [r] (flt (r 0)))) (into {}))
+                    bind (->> (map (fn [[k v]] [(bind k) v])) (into {}))))))))
 
   (defn select-transitive
     "Takes a PModel, a triple pattern and min/max search limits.
@@ -233,12 +240,12 @@
     path of minimum length is found."
     [ds [s p o* :as t] min max]
     (let [o (make-qvar)
-          res (select-with-bindings ds [s p o] {})]
+          res (select-with-bindings ds [s p o] {} {})]
       (when (seq res)
         (loop [res res, s o, i 1, ik []]
           (if (< i max)
             (let [o (make-qvar)
-                  r' (select-with-bindings ds [s p o] {})]
+                  r' (select-with-bindings ds [s p o] {} {})]
               (if (seq r')
                 (let [res' (join res r')]
                   (if (seq res')
@@ -286,7 +293,7 @@ Select only children & grandchildren for given person:
     (if (<= (count acc) max)
       (let [acc (conj acc sv)
             o (make-qvar)
-            r (select-with-bindings ds [s p o] {s sv})]
+            r (select-with-bindings ds [s p o] {s sv} {})]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
            (fn [ov]
@@ -301,7 +308,7 @@ Select only children & grandchildren for given person:
     (if (<= (count acc) max)
       (let [acc (conj acc ov)
             s (make-qvar)
-            r (select-with-bindings ds [s p o] {o ov})]
+            r (select-with-bindings ds [s p o] {o ov} {})]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
            (fn [sv]
@@ -349,7 +356,7 @@ Select only children & grandchildren for given person:
                  slices-k (subvec-slices (inc mind) (inc maxd))
                  slices-t (subvec-slices mind maxd)
                  slices (fn [[k t]] (map vector (slices-k k) (slices-t t)))]
-             (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf))
+             (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf) {})
                   (#+clj r/map    #+cljs map    (:lookup conf))
                   (#+clj r/mapcat #+cljs mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
                   (#+clj r/mapcat #+cljs mapcat slices)
