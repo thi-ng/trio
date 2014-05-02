@@ -455,117 +455,11 @@ of the code.
     ([t] (if (instance? Triple t) t (let [[s p o] t] (Triple. s p o nil)))))
 #+END_SRC
 
-** In-memory store
+** In-memory stores
 
-*** Type implementation
+*** Classic 3-index implementation
 #+BEGIN_SRC clojure :noweb-ref memstore
-  (defrecord PlainMemoryStore [spo pos ops size]
-    PStatementAccess
-    (add-statement
-      [_ [s p o]]
-      (let [s (get (find spo s) 0 s)
-            p (get (find pos p) 0 p)
-            o (get (find ops o) 0 o)]
-        (if (-> spo (get s nil) (get p nil) (get o nil))
-          _
-          (PlainMemoryStore.
-           (update-in spo [s p] d/set-conj o)
-           (update-in pos [p o] d/set-conj s)
-           (update-in ops [o p] d/set-conj s)
-           (inc size)))))
-    (add-bulk [_ statements]
-      (loop [spo spo, pos pos, ops ops, size size, xs statements]
-        (if xs
-          (let [[s p o] (first xs)
-                s (get (find spo s) 0 s)
-                p (get (find pos p) 0 p)
-                o (get (find ops o) 0 o)]
-            (if (-> spo (get s nil) (get p nil) (get o nil))
-              (recur spo pos ops size (next xs))
-              (recur
-               (update-in spo [s p] d/set-conj o)
-               (update-in pos [p o] d/set-conj s)
-               (update-in ops [o p] d/set-conj s)
-               (inc size)
-               (next xs))))
-          (PlainMemoryStore. spo pos ops size))))
-    (remove-statement [_ [s p o]]
-      (if (-> spo (get s nil) (get p nil) (get o nil))
-        (PlainMemoryStore.
-         (remove-from-index spo s p o)
-         (remove-from-index pos p o s)
-         (remove-from-index ops o p s)
-         (dec size))
-        _))
-    (remove-bulk [_ statements]
-      (loop [spo spo, pos pos, ops ops, size size, xs statements]
-        (if xs
-          (let [[s p o] (first xs)]
-            (if (-> spo (get s nil) (get p nil) (get o nil))
-              (recur
-               (remove-from-index spo s p o)
-               (remove-from-index pos p o s)
-               (remove-from-index ops o p s)
-               (dec size)
-               (next xs))
-              (recur spo pos ops size (next xs))))
-          (PlainMemoryStore. spo pos ops size))))
-    (update-statement [_ s1 s2]
-      (add-statement (remove-statement _ s1) s2))
-    (remove-subject [_ s]
-      (remove-bulk _ (select _ s nil nil)))
-
-    PModel
-    (subject? [_ x]
-      (if (spo x) x))
-    (predicate? [_ x]
-      (if (pos x) x))
-    (object? [_ x]
-      (if (ops x) x))
-    (indexed? [_ x]
-      (if (or (spo x) (pos x) (ops x)) x))
-    (subjects [_] (keys spo))
-    (predicates [_] (keys pos))
-    (objects [_] (keys ops))
-    (model-size [_] size)
-    (select [_]
-      (select _ nil nil nil))
-    (select
-      [_ s p o]
-      (if s
-        (if p
-          (if o
-            ;; s p o
-            (let [t (triple s p o)]
-              (if (-> spo (get s nil) (get p nil) (get o nil)) [t]))
-            ;; s p nil
-            (let [objects (-> spo (get s nil) (get p nil))]
-              (if objects (map #(triple s p %) objects))))
-          ;; s nil o / s nil nil
-          (let [subjects (spo s)]
-            (if subjects
-              (select-seq subjects (fn [p] #(triple s p %)) (if o #(= o %))))))
-        (if p
-          (if o
-            ;; nil p o
-            (let [subjects (-> pos (get p nil) (get o nil))]
-              (if subjects (map #(triple % p o) subjects)))
-            ;; nil p nil
-            (let [preds (pos p)]
-              (if preds (select-seq preds (fn [o] #(triple % p o))))))
-          (if o
-            ;; nil nil o
-            (let [objects (ops o)]
-              (if objects (select-seq objects (fn [p] #(triple % p o)))))
-            ;; nil nil nil
-            (mapcat
-             (fn [[s props]] (select-seq props (fn [p] #(triple s p %))))
-             spo))))))
-#+END_SRC
-
-*** Alt implementation
-#+BEGIN_SRC clojure :noweb-ref memstore
-  (defrecord PlainMemoryStore2 [spo pos osp size]
+  (defrecord PlainMemoryStore [spo pos osp size]
     PStatementAccess
     (add-statement
       [_ [s p o :as t]]
@@ -575,7 +469,7 @@ of the code.
               p (get (find pos p) 0 p)
               o (get (find osp o) 0 o)
               t (Triple. s p o nil)]
-          (PlainMemoryStore2.
+          (PlainMemoryStore.
            (update-in spo [s p] d/set-conj t)
            (update-in pos [p o] d/set-conj t)
            (update-in osp [o s] d/set-conj t)
@@ -598,11 +492,11 @@ of the code.
                  (inc size)
                  (next xs)))))
           (if changed?
-            (PlainMemoryStore2. spo pos osp size)
+            (PlainMemoryStore. spo pos osp size)
             _))))
     (remove-statement [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil))
-        (PlainMemoryStore2.
+        (PlainMemoryStore.
          (remove-from-index spo s p t)
          (remove-from-index pos p o t)
          (remove-from-index osp o s t)
@@ -622,7 +516,7 @@ of the code.
                (next xs))
               (recur changed? spo pos osp size (next xs))))
           (if changed?
-            (PlainMemoryStore2. spo pos osp size)
+            (PlainMemoryStore. spo pos osp size)
             _))))
     (update-statement [_ s1 s2]
       (add-statement (remove-statement _ s1) s2))
@@ -646,6 +540,7 @@ of the code.
       (select _ nil nil nil))
     (select
       [_ s p o]
+      ;;(prn :spo s p o)
       (if s
         (if p
           (if o
@@ -671,15 +566,127 @@ of the code.
             (->> spo vals (mapcat vals) (apply concat)))))))
 #+END_SRC
 
+*** Triple graph (WIP)
+
+Currently highly inefficient (4-5x slower than =PlainMemoryStore=),
+but still thinking this approach of treating triples (incl. with
+wildcards) as graph, might have better milage later when solving query
+joins...
+
+#+BEGIN_SRC clojure :noweb-ref memstore
+  (defprotocol PNode
+    (get-children [_])
+    (add-child [_ c])
+    (remove-child [_ c]))
+
+  (defprotocol PGraph
+    (add-node [_ n] [_ n parents])
+    (get-node [_ t])
+    (get-ids [_])
+    (get-nodes [_]))
+
+  (deftype TripleNode [triple ^:volatile-mutable children]
+    PNode
+    (get-children [_] children)
+    (add-child [_ c] (set! children (conj (or children #{}) c)) _)
+    (remove-child [_ c] (set! children (disj children c)) _)
+
+    Object
+    (toString [_] (str (pr-str triple) " " (pr-str children))))
+
+  (declare select-tg*)
+
+  (deftype TripleGraph [nodes ids next-id]
+    Object
+    (toString
+      [_] (str ":nodes " (pr-str nodes)
+               " :ids " (pr-str ids)
+               " :next " next-id))
+
+    PGraph
+    (add-node
+      [_ n] (add-node _ n nil))
+    (add-node
+      [_ n parents]
+      (let [g (TripleGraph.
+               (assoc nodes next-id n)
+               (assoc ids (.-triple  ^TripleNode n) next-id)
+               (inc next-id))]
+        (when (seq parents)
+          (doseq [^TripleNode p parents]
+            (add-child p next-id)))
+        g))
+    (get-node
+      [_ t] (nodes (ids t)))
+
+    PStatementAccess
+    (add-statement
+      [_ [s p o :as t]]
+      (if-not (ids t)
+        (let [id (.-next-id _)
+              ^TripleGraph g (add-node _ (TripleNode. t nil) nil)
+              index-branch (fn [g patterns]
+                             (loop [^TripleGraph g g, id id, ps patterns]
+                               (if ps
+                                 (let [id' ((.-ids g) (first ps))]
+                                   (if id'
+                                     (do
+                                       (add-child ^TripleNode ((.-nodes g) id') id)
+                                       g)
+                                     (recur
+                                      (add-node g (TripleNode. (first ps) #{id}) nil)
+                                      (.-next-id g)
+                                      (next ps))))
+                                 g)))]
+          (-> (index-branch g [[s p nil] [s nil nil] [nil nil nil]])
+              (index-branch [[nil p o] [nil p nil]])
+              (index-branch [[s nil o] [nil nil o]])
+              ))
+        _))
+
+    PModel
+    (select
+      [_ s p o]
+      (persistent! (select-tg* nodes (ids [s p o]) (transient [])))))
+
+  (defn- select-tg*
+    [nodes id acc]
+    (let [^TripleNode n (nodes id)]
+      (if n
+        (let [c (get-children n)]
+          (if c
+            (reduce #(select-tg* nodes %2 %) acc c)
+            (conj! acc (.-triple n))))
+        acc)))
+
+  (defn triple-graph
+    []
+    (let [root (TripleNode. [nil nil nil] nil)]
+      (add-node (TripleGraph. {} {} 0) root)))
+#+END_SRC
+**** Old add-statement
+#+BEGIN_SRC clojure
+  (add-statement
+   [_ [s p o :as t]]
+   (let [[_ t1s] (if-let [n (nodes (ids [s nil nil]))]
+                   [_ n] (let [n (index-node [s nil nil])] [(add-node _ n [(nodes 0)]) n]))
+         [_ t1p] (if-let [n (nodes (ids [nil p nil]))]
+                   [_ n] (let [n (index-node [nil p nil])] [(add-node _ n) n]))
+         [_ t1o] (if-let [n (nodes (ids [nil nil o]))]
+                   [_ n] (let [n (index-node [nil nil o])] [(add-node _ n) n]))
+         [_ t2sp] (if-let [n (nodes (ids [s p nil]))]
+                    [_ n] (let [n (index-node [s p nil])] [(add-node _ n [t1s]) n]))
+         [_ t2po] (if-let [n (nodes (ids [nil p o]))]
+                    [_ n] (let [n (index-node [nil p o])] [(add-node _ n [t1p]) n]))
+         [_ t2so] (if-let [n (nodes (ids [s nil o]))]
+                    [_ n] (let [n (index-node [s nil o])] [(add-node _ n [t1o]) n]))]
+     (add-node _ (index-node t) [t2sp t2so t2po])))
+#+END_SRC
 *** Constructors
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
     [& triples]
     (add-bulk (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
-
-  (defn plain-store-alt
-    [& triples]
-    (add-bulk (PlainMemoryStore2. (hash-map) (hash-map) (hash-map) 0) triples))
 #+END_SRC
 
 ** Multi-store dataset
