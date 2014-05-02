@@ -187,7 +187,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-2197"]
+[org.clojure/clojurescript "0.0-2202"]
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
@@ -204,11 +204,11 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/hugoduncan/criterium][Criterium]]
 #+BEGIN_SRC clojure :noweb-ref dep-criterium
-[criterium "0.4.1"]
+[criterium "0.4.3"]
 #+END_SRC
 **** [[https://github.com/cemerick/clojurescript.test][clojurescript.test]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs-test
-[com.cemerick/clojurescript.test "0.2.2"]
+[com.cemerick/clojurescript.test "0.3.0"]
 #+END_SRC
 **** [[https://github.com/emezeske/lein-cljsbuild][Cljsbuild]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljsbuild
