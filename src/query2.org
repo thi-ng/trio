@@ -163,46 +163,28 @@
 #+BEGIN_SRC clojure :noweb-ref joins
   (defn join
     [a b]
-    (let [ka (keys a)
-          kb (keys b)
-          vka (keys (first ka))
-          vkb (keys (first kb))]
-      (->> (set/join ka kb)
-           (#+clj r/map #+cljs map
-                  (if (= vka vkb)
-                    (fn [k]
-                      (if (unique-bindings? k)
-                        (let [ks (select-keys k vka)
-                              sa (a ks)
-                              sb (b ks)]
-                          [k (if (< (count sa) (count sb))
-                               (into sb sa)
-                               (into sa sb))])))
-                    (fn [k]
-                      (if (unique-bindings? k)
-                        (let [sa (a (select-keys k vka))
-                              sb (b (select-keys k vkb))]
-                          [k (if (< (count sa) (count sb))
-                               (into sb sa)
-                               (into sa sb))])))))
-           (into {}))))
+    (->> (set/join a b)
+         (mapcat
+          (fn [k]
+            (if (unique-bindings? k)
+              [k])))))
 
   (defn join-optional
     [a b]
     (let [[new old] (reduce
-                     (fn [acc [kb vb]]
+                     (fn [acc kb]
                        (reduce
-                        (fn [acc [ka va]]
+                        (fn [acc ka]
                           (let [j (first (set/join #{ka} #{kb}))]
                             (if j
                               (reduced
-                               [(assoc (acc 0) j (into va vb))
+                               [(conj (acc 0) j)
                                 (conj (acc 1) ka)])
                               acc)))
                         acc a))
-                     [{} #{}] b)]
+                     [#{} #{}] b)]
       (if (seq new)
-        (into (apply dissoc a old) new)
+        (into (apply disj (set a) old) new)
         a)))
 #+END_SRC
 
@@ -224,13 +206,10 @@
                        #(if (verify %)
                           (let [vbinds (select-renamed-keys % vm)]
                             (if (flt vbinds)
-                              [vbinds #{%}])))
+                              vbinds)))
                        #(if (verify %)
-                          [(select-renamed-keys % vm) #{%}]))]
-          (->> res
-               (#+clj r/map #+cljs map res-fn)
-               (into {})))
-        {})))
+                          (select-renamed-keys % vm)))]
+          (map res-fn res)))))
 
   (defn select-join
     [ds patterns bindings {bind :bind flt :filter}]
@@ -244,12 +223,12 @@
                   res (if (seq r') (join res r'))]
               (if (seq res)
                 (recur res (next ps))))
-            (cond-> res
-                    flt (->> (filter (fn [r] (flt (r 0)))) (into {}))
-                    bind (->> (map (fn [[k v]] [(bind k) v])) (into {}))))))))
+            (cond->> res
+                     flt (filter flt)
+                     bind (map bind)))))))
 #+END_SRC
 
-** Depth-first search
+** Transitive properties & path queries
 
 If same min/max search depth, resort to =select-join= with expanded pattern.
 In that case predicate can be a seq =[pred1 pred2 ..]= which is
@@ -310,11 +289,11 @@ Select only children & grandchildren for given person:
           (if (> (count acc) min) [[acc triples]])))
       [[acc triples]]))
 
-  (defn dfs
+  (defn select-transitive
     ([ds [s p o :as t]]
        (if (sequential? p)
-         (dfs ds t (count p) (count p))
-         (dfs ds t 1 1000000)))
+         (select-transitive ds t (count p) (count p))
+         (select-transitive ds t 1 1000000)))
     ([ds [s p o] mind maxd]
        (let [mind (max mind 1)
              maxd (max maxd 1)]
@@ -370,7 +349,7 @@ Select only children & grandchildren for given person:
 
   (def ds (apply plain-store (read-string (slurp "../dev/schmidts.clj"))))
 
-  (spit "schmidts.dot" (q/results->dot (q/dfs ds '[?s [mother father] ?c])))
+  (spit "schmidts.dot" (q/results->dot (q/select-transitive ds '[?s [mother father] ?c])))
 #+END_SRC
 
 ** Complete namespace definition                                   :noexport:
