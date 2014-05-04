@@ -260,34 +260,30 @@ Select only children & grandchildren for given person:
       (map #(subvec path 0 %) (range n1 (inc (min (count path) n2))))))
 
   (defn dfs-forward*
-    [ds s p sv acc triples min max]
+    [ds s p sv acc min max]
     (if (<= (count acc) max)
       (let [acc (conj acc sv)
             o (make-qvar)
             r (select-with-bindings ds [s p o] {s sv} {})]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
-           (fn [ov]
-             (let [t (accumulate-var-triples o ov r)]
-               (dfs-forward* ds o p ov acc (into triples t) min max)))
-           (set (map o (keys r))))
-          (if (> (count acc) min) [[acc triples]])))
-      [[acc triples]]))
+           (fn [ov] (dfs-forward* ds o p ov acc min max))
+           (set (map o r)))
+          (if (> (count acc) min) [acc])))
+      [acc]))
 
   (defn dfs-backward*
-    [ds o p ov acc triples min max]
+    [ds o p ov acc min max]
     (if (<= (count acc) max)
       (let [acc (conj acc ov)
             s (make-qvar)
             r (select-with-bindings ds [s p o] {o ov} {})]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
-           (fn [sv]
-             (let [t (accumulate-var-triples s sv r)]
-               (dfs-backward* ds s p sv acc (into triples t) min max)))
-           (set (map s (keys r))))
-          (if (> (count acc) min) [[acc triples]])))
-      [[acc triples]]))
+           (fn [sv] (dfs-backward* ds s p sv acc min max))
+           (set (map s r)))
+          (if (> (count acc) min) [acc])))
+      [acc]))
 
   (defn select-transitive
     ([ds [s p o :as t]]
@@ -308,32 +304,29 @@ Select only children & grandchildren for given person:
                        (and vs? vo?) {:s s ;; [?s p ?o]
                                       :o v
                                       :bmap {}
-                                      :lookup (fn [[b t]] [(b s) (b v) t])
-                                      :bind (fn [[p t]] [{s (first p) o (peek p)} (set t)])
+                                      :lookup (fn [b] [(b s) (b v)])
+                                      :bind (fn [p] {s (first p) o (peek p)})
                                       :search dfs-forward*}
                        vo?           {:s v ;; [x p ?o]
                                       :o o
                                       :bmap {v s}
-                                      :lookup (fn [[b t]] [(b v) (b o) t])
-                                      :bind (fn [[p t]] [{o (peek p)} (set t)])
+                                      :lookup (fn [b] [(b v) (b o)])
+                                      :bind (fn [p] {o (peek p)})
                                       :search dfs-forward*}
                        vs?           {:s s ;; [?s p x]
                                       :o v
                                       :bmap {v o}
-                                      :lookup (fn [[b t]] [(b v) (b s) t])
-                                      :bind (fn [[p t]] [{s (peek p)} (set t)])
+                                      :lookup (fn [b] [(b v) (b s)])
+                                      :bind (fn [p] {s (peek p)})
                                       :search dfs-backward*})
                  {:keys [bind search]} conf
-                 slices-k (subvec-slices (inc mind) (inc maxd))
-                 slices-t (subvec-slices mind maxd)
-                 slices (fn [[k t]] (map vector (slices-k k) (slices-t t)))]
+                 slices (subvec-slices (inc mind) (inc maxd))]
              (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf) {})
                   (#+clj r/map    #+cljs map    (:lookup conf))
-                  (#+clj r/mapcat #+cljs mapcat #(search ds v p (% 1) [(% 0)] (vec (% 2)) mind maxd))
+                  (#+clj r/mapcat #+cljs mapcat #(search ds v p (% 1) [(% 0)] mind maxd))
                   (#+clj r/mapcat #+cljs mapcat slices)
-                  (into {})
                   (#+clj r/map    #+cljs map    bind)
-                  (into (hash-map))))))))
+                  (into #{})))))))
 #+END_SRC
 
 ** Examples
