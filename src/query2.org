@@ -171,21 +171,22 @@
 
   (defn join-optional
     [a b]
-    (let [[new old] (reduce
-                     (fn [acc kb]
-                       (reduce
-                        (fn [acc ka]
-                          (let [j (first (set/join #{ka} #{kb}))]
-                            (if j
-                              (reduced
-                               [(conj (acc 0) j)
-                                (conj (acc 1) ka)])
-                              acc)))
-                        acc a))
-                     [#{} #{}] b)]
-      (if (seq new)
-        (into (apply disj (set a) old) new)
-        a)))
+    (loop [old (transient #{}), new (transient #{}), kb b]
+      (if kb
+        (let [kb' [(first kb)]
+              [old new] (loop [old old, new new, ka a]
+                          (if ka
+                            (let [ka' (first ka)
+                                  j (first (set/join [ka'] kb'))]
+                              (if j
+                                (recur (conj! old ka') (conj! new j) (next ka))
+                                (recur old new (next ka))))
+                            [old new]))]
+          (recur old new (next kb)))
+        (let [new (persistent! new)]
+          (if (seq new)
+            (into (apply disj (set a) (persistent! old)) new)
+            a)))))
 #+END_SRC
 
 ** Select
@@ -332,9 +333,9 @@ Select only children & grandchildren for given person:
 ** Examples
 
 #+BEGIN_SRC clojure
-  (join
-   (select-transitive ds '[?gp mother ?c] 0 100)
-   (select-with-bindings ds '[?sp spouse ?p0] {}))
+  (q/join
+   (q/select-transitive ds '[?gp mother ?c])
+   (q/select-with-bindings ds '[?sp spouse ?c] {} {}))
 
   (require
    '[thi.ng.trio.core :refer :all]
