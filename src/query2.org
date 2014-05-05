@@ -158,7 +158,7 @@
     (->> res (mapcat val) (set) (triples->dot)))
 #+END_SRC
 
-** Join
+** Joins
 
 #+BEGIN_SRC clojure :noweb-ref joins
   (defn join
@@ -210,18 +210,21 @@
                               vbinds)))
                        #(if (verify %)
                           (select-renamed-keys % vm)))]
-          (map res-fn res)))))
+          (->> res
+               (map res-fn)
+               (filter (complement nil?)))))))
 
   (defn select-join
-    [ds patterns bindings {bind :bind flt :filter}]
+    [ds patterns bindings {bind :bind flt :filter opt? :optional?}]
     (let [[p & ps] (sort-patterns patterns)
-          res (select-with-bindings ds p bindings {})]
+          res (select-with-bindings ds p bindings {})
+          join-fn (if opt? join-optional join)]
       ;;(prn p ps)
       (if (seq res)
         (loop [res res, ps ps]
           (if ps
             (let [r' (select-with-bindings ds (first ps) bindings {})
-                  res (if (seq r') (join res r'))]
+                  res (if (seq r') (join-fn res r'))]
               (if (seq res)
                 (recur res (next ps))))
             (cond->> res
@@ -254,11 +257,11 @@ Select only children & grandchildren for given person:
 #+BEGIN_SRC clojure :noweb-ref dfs
   (defn subvec-slices
     "Takes a min & max count and returns function accepting a vector as
-    single arg. When called, returns lazyseq of subvec slices each starting
+    single arg. When called, returns vector of subvec slices each starting
     at index 0 and with an increasing length from min to max."
     [n1 n2]
     (fn [path]
-      (map #(subvec path 0 %) (range n1 (inc (min (count path) n2))))))
+      (mapv #(subvec path 0 %) (range n1 (inc (min (count path) n2))))))
 
   (defn dfs-forward*
     [ds s p sv acc min max]
@@ -305,28 +308,28 @@ Select only children & grandchildren for given person:
                        (and vs? vo?) {:s s ;; [?s p ?o]
                                       :o v
                                       :bmap {}
-                                      :lookup (fn [b] [(b s) (b v)])
+                                      :lookup (fn [b] [(b v) (b s)])
                                       :bind (fn [p] {s (first p) o (peek p)})
                                       :search dfs-forward*}
                        vo?           {:s v ;; [x p ?o]
                                       :o o
                                       :bmap {v s}
-                                      :lookup (fn [b] [(b v) (b o)])
+                                      :lookup (fn [b] [(b o) (b v)])
                                       :bind (fn [p] {o (peek p)})
                                       :search dfs-forward*}
                        vs?           {:s s ;; [?s p x]
                                       :o v
                                       :bmap {v o}
-                                      :lookup (fn [b] [(b v) (b s)])
+                                      :lookup (fn [b] [(b s) (b v)])
                                       :bind (fn [p] {s (peek p)})
                                       :search dfs-backward*})
                  {:keys [bind search]} conf
                  slices (subvec-slices (inc mind) (inc maxd))]
              (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf) {})
-                  (#+clj r/map    #+cljs map    (:lookup conf))
-                  (#+clj r/mapcat #+cljs mapcat #(search ds v p (% 1) [(% 0)] mind maxd))
-                  (#+clj r/mapcat #+cljs mapcat slices)
-                  (#+clj r/map    #+cljs map    bind)
+                  (r/map    (:lookup conf))
+                  (r/mapcat #(search ds v p (% 0) [(% 1)] mind maxd))
+                  (r/mapcat slices)
+                  (r/map    bind)
                   (into #{})))))))
 #+END_SRC
 
@@ -354,7 +357,7 @@ Select only children & grandchildren for given person:
      [thi.ng.common.data.core :as d]
      [thi.ng.common.data.unionfind :as uf]
      [clojure.set :as set]
-     #+clj [clojure.core.reducers :as r]))
+     [clojure.core.reducers :as r]))
 
   <<helpers>>
 

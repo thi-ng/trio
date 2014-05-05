@@ -804,7 +804,7 @@ joins...
     (:require
      [thi.ng.common.data.core :as d]
      [thi.ng.common.error :as err]
-     [clojure.core.protocols :as cp]))
+     #+clj [clojure.core.protocols :as cp]))
 
   <<protos>>
 
