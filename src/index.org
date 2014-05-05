@@ -33,10 +33,14 @@ ALPHA quality, subject to frequent changes until further notice.
 #+BEGIN_SRC clojure
   (require
    '[thi.ng.trio.core :refer :all]
-   '[thi.ng.trio.query :as q])
+   '[thi.ng.trio.query2 :as q])
 #+END_SRC
 
 [[../assets/counselor.png]]
+
+The graph above shows some character relationships from the film
+"The Counselor", written by Cormac McCarthy & directed by Ridley Scott.
+The code below is encoding & analyzing these relationships.
 
 #+BEGIN_SRC clojure
   ;; ds will hold a plain triple store which accepts any datatype
@@ -46,7 +50,7 @@ ALPHA quality, subject to frequent changes until further notice.
   ;; these will be dealt with in the still unreleased thi.ng/sema library
 
   (def ds
-    (add-many
+    (add-bulk
      (plain-store)
      '[[reiner       loves     malkina]
        [laura        loves     counselor]
@@ -62,6 +66,11 @@ ALPHA quality, subject to frequent changes until further notice.
        [jefe         works-for cartel]
        [laura        killed-by cartel]
        [wireman      killed-by cartel]]))
+
+  ;; export the triples as dot file for graphviz
+  ;; the file can then be visualized from the command line via:
+  ;; `dot -Tpng -o counselor.png counselor.dot`
+  (spit "counselor.dot" (q/triples->dot (select ds)))
 
   ;; all subjects
   (subjects ds)
@@ -89,12 +98,12 @@ ALPHA quality, subject to frequent changes until further notice.
   ;;  [reiner loves malkina])
 
 
-  ;; all characters in love
+  ;; find all triples of characters in love
   (select ds nil 'loves nil)
   ;; ([counselor loves laura] [laura loves counselor] [reiner loves malkina])
 
 
-  ;; all we know about malkina as object
+  ;; all we know about malkina in object position
   (select ds nil nil 'malkina)
   ;; ([wireman2 works-for malkina] [wireman works-for malkina] [reiner loves malkina])
 
@@ -105,42 +114,23 @@ ALPHA quality, subject to frequent changes until further notice.
 
 
   ;; now let's use query engine & bind some query variable(s)
-  (q/select-with-bindings ds '[?victim killed-by cartel] nil false)
+  (q/select-with-bindings ds '[?victim killed-by cartel])
   ;; ({?victim laura} {?victim reiner} {?victim wireman})
-
-
-  ;; ...not just cartel victims & also include matched triples in result
-  (q/select-with-bindings ds '[?victim killed-by ?criminal])
-  ;; ({?criminal wireman,
-  ;;   ?victim green-hornet,
-  ;;   :__triples [[green-hornet killed-by wireman]]}
-  ;;  {?criminal cartel,
-  ;;   ?victim laura,
-  ;;   :__triples [[laura killed-by cartel]]}
-  ;;  {?criminal cartel,
-  ;;   ?victim reiner,
-  ;;   :__triples [[reiner killed-by cartel]]}
-  ;;  {?criminal cartel,
-  ;;   ?victim wireman,
-  ;;   :__triples [[wireman killed-by cartel]]}
-  ;;  {?criminal wireman2,
-  ;;   ?victim westray,
-  ;;   :__triples [[westray killed-by wireman2]]})
 
 
   ;; is malkina a murderer?
   (q/select-with-bindings ds '[?v killed-by malkina])
-  ;; ()
+  ;; nil
 
 
   ;; ...doesn't look like it, but maybe she employed someone to do dirty
   ;; work for her?
-  (q/select-join-from ds '[[?v killed-by ?m] [?m works-for malkina]])
+  (q/select-join ds '[[?v killed-by ?m] [?m works-for malkina]])
   ;; ({?v westray, ?m wireman2} {?v green-hornet, ?m wireman})
 
 
   ;; ...bingo, we could also have written this as a property path query
-  (q/select-join-from ds (q/resolve-patterns '[[?v [killed-by works-for] ?m]]))
+  (q/select-transitive ds '[?v [killed-by works-for] ?m])
   ;; ({?m malkina, ?v green-hornet, ?___q9910 wireman}
   ;;  {?m malkina, ?v westray, ?___q9910 wireman2})
 
@@ -152,9 +142,16 @@ ALPHA quality, subject to frequent changes until further notice.
          [?lover killed-by ?m2]
          [?victim ?rel ?lover]]
        (q/resolve-patterns)
-       (q/select-join-from ds)
-       (map #(select-keys % '[?victim ?lover ?rel ?m])))
-  ;; ({?m malkina, ?rel friend-of, ?lover reiner, ?victim westray})
+       (q/select-join ds)
+       (map
+        (fn [{:syms [?victim ?lover ?rel ?m ?m2]}]
+          (str
+           ?victim " was killed on behalf of " ?m ". "
+           "the killer's lover, " ?lover ", was killed in turn by " ?m2 ". "
+           ?lover " was a " ?rel " " ?victim))))
+  ;; ("westray was killed by malkina.
+  ;;   the killer's lover, reiner, was killed in turn by cartel.
+  ;;   reiner was a friend-of westray")
 #+END_SRC
 
 ** License

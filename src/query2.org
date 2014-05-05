@@ -5,15 +5,22 @@
 ** Helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (defn trace [id _] (dorun _) (prn "----") (prn id _) _)
+  (defn trace [id _] (dorun _) (prn id _) _)
+
+  (def ^:dynamic *auto-qvar-prefix* "?__q")
 
   (defn qvar?
     "Returns true, if x is a qvar (a symbol prefixed with '?')"
     [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))
 
+  (defn auto-qvar?
+    "Returns true, if x is an auto-generated qvar
+    (a symbol prefixed with *auto-qvar-prefix*)"
+    [x] (and (symbol? x) (zero? (.indexOf ^String (name x) *auto-qvar-prefix*))))
+
   (defn make-qvar
     "Creates a new auto-named qvar (symbol)."
-    [] (gensym "?__q"))
+    [] (gensym *auto-qvar-prefix*))
 
   (defn resolve-path-pattern
     "Takes a path triple pattern where the predicate is a seq of preds.
@@ -28,6 +35,15 @@
                     (cons s))]
       (->> (concat (interleave vars p) [o])
            (d/successive-nth 3 2))))
+
+  (defn resolve-patterns
+    [patterns]
+    (mapcat
+     (fn [[_ p :as t]]
+       (if (vector? p)
+         (resolve-path-pattern t)
+         [t]))
+     patterns))
 
   (defn unique-bindings?
     "Returns true if all values in the given map are unique, i.e.
@@ -150,12 +166,6 @@
          (str "\"" (pr-str s) "\" -> \"" (pr-str o) "\" [label=\"" (pr-str p) "\"];\n"))
        triples)
       "}")))
-
-  (defn results->dot
-    "Similar to triples->dot, but consumes query result map instead of
-    plain triple seq."
-    [res]
-    (->> res (mapcat val) (set) (triples->dot)))
 #+END_SRC
 
 ** Joins
@@ -193,43 +203,46 @@
 
 #+BEGIN_SRC clojure :noweb-ref selectors
   (defn select-with-bindings
-    [ds [s p o :as t] bindings opts]
-    (let [[vs? vp? vo?] (mapv qvar? t)
-          vm {}
-          [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
-          [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
-          [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
-          res (api/select ds qs qp qo)]
-      (if (seq res)
-        (let [verify (triple-verifier t [vs? vp? vo?])
-              flt (opts :filter)
-              res-fn (if flt
-                       #(if (verify %)
-                          (let [vbinds (select-renamed-keys % vm)]
-                            (if (flt vbinds)
-                              vbinds)))
-                       #(if (verify %)
-                          (select-renamed-keys % vm)))]
-          (->> res
-               (map res-fn)
-               (filter (complement nil?)))))))
+    ([ds t]
+       (select-with-bindings ds {} {} t))
+    ([ds bindings opts [s p o :as t]]
+       (let [[vs? vp? vo?] (mapv qvar? t)
+             vm {}
+             [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
+             [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
+             [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
+             res (api/select ds qs qp qo)]
+         (if (seq res)
+           (let [verify (triple-verifier t [vs? vp? vo?])
+                 flt (opts :filter)
+                 res-fn (if flt
+                          #(if (verify %)
+                             (let [vbinds (select-renamed-keys % vm)]
+                               (if (flt vbinds)
+                                 vbinds)))
+                          #(if (verify %)
+                             (select-renamed-keys % vm)))]
+             (->> res
+                  (map res-fn)
+                  (filter (complement nil?))))))))
 
   (defn select-join
-    [ds patterns bindings {bind :bind flt :filter opt? :optional?}]
-    (let [[p & ps] (sort-patterns patterns)
-          res (select-with-bindings ds p bindings {})
-          join-fn (if opt? join-optional join)]
-      ;;(prn p ps)
-      (if (seq res)
-        (loop [res res, ps ps]
-          (if ps
-            (let [r' (select-with-bindings ds (first ps) bindings {})
-                  res (if (seq r') (join-fn res r'))]
-              (if (seq res)
-                (recur res (next ps))))
-            (cond->> res
-                     flt (filter flt)
-                     bind (map bind)))))))
+    ([ds patterns]
+       (select-join ds {} {} patterns))
+    ([ds bindings {bind :bind flt :filter opt? :optional?} patterns]
+       (let [[p & ps] (sort-patterns patterns)
+             res (select-with-bindings ds bindings {} p)
+             join-fn (if opt? join-optional join)]
+         (if (seq res)
+           (loop [res res, ps ps]
+             (if ps
+               (let [r' (select-with-bindings ds bindings {} (first ps))
+                     res (if (seq r') (join-fn res r'))]
+                 (if (seq res)
+                   (recur res (next ps))))
+               (cond->> res
+                        flt (filter flt)
+                        bind (map bind))))))))
 #+END_SRC
 
 ** Transitive properties & path queries
@@ -238,19 +251,19 @@ If same min/max search depth, resort to =select-join= with expanded pattern.
 In that case predicate can be a seq =[pred1 pred2 ..]= which is
 expanded cyclically for =depth= hops, e.g:
 
- : (dfs ds '[?s [mother father] ?o] 3 3)
+ : (select-transitive ds '[?s [mother father] ?o] 3 3)
 
 Else, the fn takes a standard pattern with the subject or object either a given
 constant or qvar:
 
 Select all 'mother' rels from 1 - 3 hops (i.e. from mother -> great-grandmother)
- : (dfs ds '[?s mother ?c] 1 3)
+ : (select-transitive ds '[?s mother ?c] 1 3)
 
-If the object is not a qvar, search is executed backwards:
- : (dfs ds '[?m mother 'toxi])
+If the object is not a qvar, the search is executed in reverse direction:
+ : (select-transitive ds '[?m mother 'toxi])
 
 Select only children & grandchildren for given person:
- : (dfs ds '[john father ?c] 2 2)
+ : (select-transitive ds '[john father ?c] 2 2)
  : ;; same as...
  : (select-join ds '[[john father ?p] [?p father ?c]])
 
@@ -268,7 +281,7 @@ Select only children & grandchildren for given person:
     (if (<= (count acc) max)
       (let [acc (conj acc sv)
             o (make-qvar)
-            r (select-with-bindings ds [s p o] {s sv} {})]
+            r (select-with-bindings ds {s sv} {} [s p o])]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
            (fn [ov] (dfs-forward* ds o p ov acc min max))
@@ -281,7 +294,7 @@ Select only children & grandchildren for given person:
     (if (<= (count acc) max)
       (let [acc (conj acc ov)
             s (make-qvar)
-            r (select-with-bindings ds [s p o] {o ov} {})]
+            r (select-with-bindings ds {o ov} {} [s p o])]
         (if (seq r)
           (#+clj r/mapcat #+cljs mapcat
            (fn [sv] (dfs-backward* ds s p sv acc min max))
@@ -291,16 +304,16 @@ Select only children & grandchildren for given person:
 
   (defn select-transitive
     ([ds [s p o :as t]]
-       (if (sequential? p)
+       (if (vector? p)
          (select-transitive ds t (count p) (count p))
          (select-transitive ds t 1 1000000)))
     ([ds [s p o] mind maxd]
        (let [mind (max mind 1)
              maxd (max maxd 1)]
          (if (= mind maxd)
-           (let [p (if (sequential? p) p [p])
+           (let [p (if (vector? p) p [p])
                  p (take mind (cycle p))]
-             (select-join ds (resolve-path-pattern [s p o]) {} {}))
+             (select-join ds {} {} (resolve-path-pattern [s p o])))
            (let [vs? (qvar? s)
                  vo? (qvar? o)
                  v (make-qvar)
@@ -325,7 +338,7 @@ Select only children & grandchildren for given person:
                                       :search dfs-backward*})
                  {:keys [bind search]} conf
                  slices (subvec-slices (inc mind) (inc maxd))]
-             (->> (select-with-bindings ds [(:s conf) p (:o conf)] (:bmap conf) {})
+             (->> (select-with-bindings ds (:bmap conf) {} [(:s conf) p (:o conf)])
                   (r/map    (:lookup conf))
                   (r/mapcat #(search ds v p (% 0) [(% 1)] mind maxd))
                   (r/mapcat slices)
@@ -338,7 +351,7 @@ Select only children & grandchildren for given person:
 #+BEGIN_SRC clojure
   (q/join
    (q/select-transitive ds '[?gp mother ?c])
-   (q/select-with-bindings ds '[?sp spouse ?c] {} {}))
+   (q/select-with-bindings ds '[?sp spouse ?c]))
 
   (require
    '[thi.ng.trio.core :refer :all]
