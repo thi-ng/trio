@@ -175,6 +175,25 @@ of the code.
 #+BEGIN_SRC clojure :noweb-ref tpl-rseq
   (Triple. o p s nil)
 #+END_SRC
+**** reduce
+#+BEGIN_SRC clojure :noweb-ref tpl-reduce
+  (let [acc (f s p)]
+    (if (reduced? acc)
+      @acc
+      (f acc o)))
+#+END_SRC
+
+**** reduce w/ init
+#+BEGIN_SRC clojure :noweb-ref tpl-reduce-start
+  (let [acc (f start s)]
+    (if (reduced? acc)
+      @acc
+      (let [acc (f acc p)]
+        (if (reduced? acc)
+          @acc
+          (f acc o)))))
+#+END_SRC
+
 *** Implementation
 #+BEGIN_SRC clojure :noweb-ref triple
   (deftype Triple
@@ -279,6 +298,19 @@ of the code.
          [_ x]
          <<tpl-compare>>)
 
+  ,#+clj cp/InternalReduce
+  ,#+clj (internal-reduce
+         [_ f start]
+         <<tpl-reduce-start>>)
+
+  ,#+clj cp/CollReduce
+  ,#+clj (coll-reduce
+         [_ f]
+         <<tpl-reduce>>)
+  ,#+clj (coll-reduce
+         [_ f start]
+         <<tpl-reduce-start>>)
+
   ,#+clj Object
   ,#+clj (toString
          [_]
@@ -375,6 +407,14 @@ of the code.
             (and (= s (.-s ^Triple x)) (= p (.-p ^Triple x)) (= o (.-o ^Triple x)))
             (and (sequential? x) (= 3 (count x))
                  (= s (nth x 0)) (= p (nth x 1)) (= o (nth x 2)))))
+
+  ,#+cljs IReduce
+  ,#+cljs (-reduce
+          [coll f]
+          <<tpl-reduce>>)
+  ,#+cljs (-reduce
+          [coll f start]
+          <<tpl-reduce-start>>)
 
   ,#+cljs Object
   ,#+cljs (toString
@@ -763,7 +803,8 @@ joins...
     (:refer-clojure :exclude [object? indexed?])
     (:require
      [thi.ng.common.data.core :as d]
-     [thi.ng.common.error :as err]))
+     [thi.ng.common.error :as err]
+     [clojure.core.protocols :as cp]))
 
   <<protos>>
 
