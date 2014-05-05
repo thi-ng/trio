@@ -180,9 +180,11 @@ of the code.
   (let [acc (f s p)]
     (if (reduced? acc)
       @acc
-      (f acc o)))
+      (let [acc (f acc o)]
+        (if (reduced? acc)
+          @acc
+          acc))))
 #+END_SRC
-
 **** reduce w/ init
 #+BEGIN_SRC clojure :noweb-ref tpl-reduce-start
   (let [acc (f start s)]
@@ -191,7 +193,10 @@ of the code.
       (let [acc (f acc p)]
         (if (reduced? acc)
           @acc
-          (f acc o)))))
+          (let [acc (f acc o)]
+            (if (reduced? acc)
+              @acc
+              acc))))))
 #+END_SRC
 
 *** Implementation
@@ -804,7 +809,7 @@ joins...
     (:require
      [thi.ng.common.data.core :as d]
      [thi.ng.common.error :as err]
-     #+clj [clojure.core.protocols :as cp]))
+     ,#+clj [clojure.core.protocols :as cp]))
 
   <<protos>>
 
