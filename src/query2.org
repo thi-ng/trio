@@ -328,9 +328,13 @@ Select only children & grandchildren for given person:
             o (make-qvar)
             r (select-with-bindings ds {s sv} {} [s p o])]
         (if (seq r)
-          (#+clj r/mapcat #+cljs mapcat
-           (fn [ov] (dfs-forward* ds o p ov acc min max))
-           (set (map o r)))
+          (let [visited (set acc)
+                ovals (filter (comp not visited) (set (map o r)))]
+            (if (seq ovals)
+              (#+clj r/mapcat #+cljs mapcat
+                     (fn [ov] (dfs-forward* ds o p ov acc min max))
+                     ovals)
+              [acc]))
           (if (> (count acc) min) [acc])))
       [acc]))
 
@@ -341,9 +345,13 @@ Select only children & grandchildren for given person:
             s (make-qvar)
             r (select-with-bindings ds {o ov} {} [s p o])]
         (if (seq r)
-          (#+clj r/mapcat #+cljs mapcat
-           (fn [sv] (dfs-backward* ds s p sv acc min max))
-           (set (map s r)))
+          (let [visited (set acc)
+                svals (filter (comp not visited) (set (map s r)))]
+            (if (seq svals)
+              (#+clj r/mapcat #+cljs mapcat
+                     (fn [sv] (dfs-backward* ds s p sv acc min max))
+                     svals)
+              [acc]))
           (if (> (count acc) min) [acc])))
       [acc]))
 
@@ -389,6 +397,13 @@ Select only children & grandchildren for given person:
                   (r/mapcat slices)
                   (r/map    bind)
                   (into #{})))))))
+#+END_SRC
+
+** Highlevel query processing
+
+#+BEGIN_SRC clojure :noweb-ref processor
+  (defn process-query
+   [{:keys [select ask construct]}])
 #+END_SRC
 
 ** Examples
