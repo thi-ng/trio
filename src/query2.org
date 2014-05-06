@@ -269,7 +269,7 @@
                              (select-renamed-keys % vm)))]
              (->> res
                   (map res-fn)
-                  (filter (complement nil?))))))))
+                  (filter identity)))))))
 
   (defn select-join
     ([ds patterns]
