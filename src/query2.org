@@ -6,7 +6,10 @@
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn trace [id _] (dorun _) (prn id _) _)
+#+END_SRC
 
+*** Query variables
+#+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
 
   (defn qvar?
@@ -22,6 +25,12 @@
     "Creates a new auto-named qvar (symbol)."
     [] (gensym *auto-qvar-prefix*))
 
+  (defn qvar-name
+    [x] (-> x name (subs 1)))
+#+END_SRC
+
+*** Query pattern resolution & handling
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn resolve-path-pattern
     "Takes a path triple pattern where the predicate is a seq of preds.
     Returns seq of query patterns with injected temp qvars for inbetween
@@ -44,11 +53,6 @@
          (resolve-path-pattern t)
          [t]))
      patterns))
-
-  (defn unique-bindings?
-    "Returns true if all values in the given map are unique, i.e.
-    no two keys are mapped to the same value."
-    [map] (== (count (into #{} (vals map))) (count map)))
 
   (defn produce-patterns-with-bound-vars
     "Takes a triple pattern (possibly with variables) and a map of
@@ -82,12 +86,12 @@
            (map peek))))
 
   (defn triple-verifier
-    "Takes a triple pattern (potentially with vars) and a 3-elem boolean
-    vector to indicate which SPO is a var. Returns fn which accepts a
-    result triple and returns false if any of the vars clash (e.g. a var
-    is used multiple times but result has different values in each position
-    or likewise, if different vars relate to same values)."
-    [[ts tp to] [vars varp varo]]
+    "Takes a triple pattern (potentially with vars) and 3 booleans to
+    indicate which SPO is a var. Returns fn which accepts a result triple
+    and returns false if any of the vars clash (e.g. a qvar is used multiple
+    times but result has different values in each position or likewise, if
+    different vars relate to same values)."
+    [[ts tp to] vars varp varo]
     (cond
      (and vars varp varo) (cond
                            (= ts tp to) (fn [[rs rp ro]] (= rs rp ro))
@@ -105,6 +109,14 @@
                        (fn [[_ rp ro]] (= rp ro))
                        (fn [[_ rp ro]] (not= rp ro)))
      :default (constantly true)))
+#+END_SRC
+
+*** Result handling
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn unique-bindings?
+    "Returns true if all values in the given map are unique, i.e.
+    no two keys are mapped to the same value."
+    [map] (== (count (into #{} (vals map))) (count map)))
 
   (defn accumulate-result-vars
     "Takes a query result map and returns map of all found qvars
@@ -127,7 +139,7 @@
 
   (defn replace-result-vars
     "Takes a result map, a map of qvars to rename and a seq of qvars to remove.
-      Returns updated result map."
+    Returns updated result map."
     [res kmap rkeys]
     (reduce-kv
      (fn [res k v]
@@ -151,6 +163,40 @@
            (next keys)))
         ret)))
 
+  (defn order-asc
+    [vars res]
+    (if (coll? vars)
+      (sort-by (fn [r] (reduce #(conj % (r %2)) [] vars)) res)
+      (sort-by (fn [r] (get r vars)) res)))
+
+  (defn order-desc
+    [vars res]
+    (if (coll? vars)
+      (sort-by
+       (fn [r] (reduce #(conj % (r %2)) [] vars))
+       #(- (compare % %2))
+       res)
+      (sort-by #(get % vars) #(- (compare % %2)) res)))
+
+  (defn distinct-result-set
+    [res]
+    (->> res
+         (reduce
+          (fn [acc r]
+            (let [vs (set (vals r))]
+              (if (acc vs) acc (assoc acc vs r))))
+          {})
+         (vals)))
+
+  (defn keywordize-result-vars
+    [res]
+    (map
+     (fn [r] (into {} (map (fn [[k v]] [(-> k qvar-name keyword) v]) r)))
+     res))
+#+END_SRC
+
+*** Graphviz export
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn triples->dot
     "Takes a seq of triples and returns them as digraph spec in
     Graphviz .dot format."
@@ -206,14 +252,13 @@
     ([ds t]
        (select-with-bindings ds {} {} t))
     ([ds bindings opts [s p o :as t]]
-       (let [[vs? vp? vo?] (mapv qvar? t)
-             vm {}
+       (let [vs? (qvar? s), vp? (qvar? p), vo? (qvar? o), vm {}
              [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
              [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
              [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
              res (api/select ds qs qp qo)]
          (if (seq res)
-           (let [verify (triple-verifier t [vs? vp? vo?])
+           (let [verify (triple-verifier t vs? vp? vo?)
                  flt (opts :filter)
                  res-fn (if flt
                           #(if (verify %)
