@@ -10,6 +10,7 @@ at once.
 ** Protocol definitions
 
 *** PModel
+
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PModel
     (select [_] [_ s p o] [_ g s p o])
@@ -24,6 +25,7 @@ at once.
 #+END_SRC
 
 *** PDataset
+
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PDataset
     (remove-model [_ id])
@@ -32,6 +34,7 @@ at once.
 #+END_SRC
 
 *** PStatementAccess
+
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PStatementAccess
     (add-statement [_ s] [_ g s])
@@ -42,10 +45,17 @@ at once.
     (remove-subject [_ s] [_ g s]))
 #+END_SRC
 
+*** PAliasModelSupport
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PAliasModelSupport
+    (rewrite-alias [_ a b]))
+#+END_SRC
+
 ** Helper functions
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (defn remove-from-index
+  (defn- remove-from-index
     [idx i1 i2 i3]
     (let [kv (idx i1)
           v (disj (kv i2) i3)
@@ -55,6 +65,21 @@ at once.
           (assoc-in idx [i1 i2] v)
           (assoc idx i1 kv))
         (dissoc idx i1))))
+
+  (defn- rewrite-alias*
+    [store pred id p q]
+    (if (pred store p)
+      (let [xs (apply select store (assoc [nil nil nil] id p))
+            store (remove-bulk store xs)]
+        (add-bulk store (map #(assoc % id q) xs)))
+      store))
+
+  (defn rewrite-alias-naive
+    [store p q]
+    (-> store
+        (rewrite-alias* subject?   0 p q)
+        (rewrite-alias* predicate? 1 p q)
+        (rewrite-alias* object?    2 p q)))
 
   (defn trace [prefix x] (prn prefix x) x)
 #+END_SRC
@@ -570,7 +595,11 @@ of the code.
             ;; nil nil o
             (->> (osp o) vals (apply concat))
             ;; nil nil nil
-            (->> spo vals (mapcat vals) (apply concat)))))))
+            (->> spo vals (mapcat vals) (apply concat))))))
+
+  PAliasModelSupport
+  (rewrite-alias
+   [_ a b] (rewrite-alias-naive _ a b)))
 #+END_SRC
 
 *** Store with alias support
@@ -593,21 +622,6 @@ more efficient to declare aliases before inserting new statements to
 avoid major rewrite operations.
 
 #+BEGIN_SRC clojure :noweb-ref alias-store
-  (defn rewrite-alias*
-    [ds pred id p q]
-    (if (pred ds p)
-      (let [xs (apply select ds (assoc [nil nil nil] id p))
-            ds (remove-bulk ds xs)]
-        (add-bulk ds (map #(assoc % id q) xs)))
-      ds))
-
-  (defn rewrite-alias
-    [ds p q]
-    (-> ds
-        (rewrite-alias* subject?   0 p q)
-        (rewrite-alias* predicate? 1 p q)
-        (rewrite-alias* object?    2 p q)))
-
   (defrecord AliasStore [store aliases]
     PStatementAccess
     (add-statement
@@ -654,12 +668,14 @@ avoid major rewrite operations.
     (unified? [_ p q] (u/unified? aliases p q))
     (union
       [_ p q]
-      (let [aliases (u/union aliases p q)
-            canon (u/canonical aliases p)
-            store (if (= p canon)
-                    (rewrite-alias store q canon)
-                    (rewrite-alias store p canon))]
-        (AliasStore. store aliases))))
+      (if (and p q)
+        (let [aliases (u/union aliases p q)
+              canon (u/canonical aliases p)
+              store (if (= p canon)
+                      (rewrite-alias store q canon)
+                      (rewrite-alias store p canon))]
+          (AliasStore. store aliases))
+        (err/illegal-arg! (str "aliases must be both non-nil values: " [p q])))))
 #+END_SRC
 *** Triple graph (WIP)
 
