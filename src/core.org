@@ -56,17 +56,6 @@ at once.
           (assoc idx i1 kv))
         (dissoc idx i1))))
 
-  (defn select-seq
-    [coll statement-fn & [flt]]
-    (mapcat
-     (fn [inner]
-       (map
-        (statement-fn (inner 0))
-        (if flt
-          (filter flt (inner 1))
-          (inner 1))))
-     coll))
-
   (defn trace [prefix x] (prn prefix x) x)
 #+END_SRC
 
@@ -232,7 +221,6 @@ of the code.
   ,#+clj (size
          [_] 3)
 
-  ;;,#+clj clojure.lang.IPersistentVector
   ,#+clj clojure.lang.Sequential
   ,#+clj clojure.lang.ISeq
   ,#+clj clojure.lang.Seqable
@@ -560,7 +548,6 @@ of the code.
       (select _ nil nil nil))
     (select
       [_ s p o]
-      ;;(prn :spo s p o)
       (if s
         (if p
           (if o
@@ -588,9 +575,9 @@ of the code.
 
 *** Store with alias support
 
-Some use cases require support for aliasing resources stored in
-triples. For example in RDF resources can be declared as equal via an
-=owl:sameAs= relationship.
+Some use cases require support for aliased resources stored in
+triples. For example in RDF resources can be explicitly declared as
+equal via an =owl:sameAs= relationship.
 
 The =AliasStore= defined below achieves this goal by wrapping an
 existing triplestore and combines it with an Union Find index to allow
@@ -601,7 +588,9 @@ components. For each component (set) a single canonical value is
 chosen. In the case of the =AliasStore= this means any triples
 containing aliased values will be rewritten to contain only canonical
 values. This happens with already existing triples and newly added
-ones. Aliases can be defined and removed at any time.
+ones. Aliases can be defined and removed at any time, although it's
+more efficient to declare aliases before inserting new statements to
+avoid major rewrite operations.
 
 #+BEGIN_SRC clojure :noweb-ref alias-store
   (defn rewrite-alias*
@@ -615,9 +604,9 @@ ones. Aliases can be defined and removed at any time.
   (defn rewrite-alias
     [ds p q]
     (-> ds
-        (rewrite-alias* subject? 0 p q)
+        (rewrite-alias* subject?   0 p q)
         (rewrite-alias* predicate? 1 p q)
-        (rewrite-alias* object? 2 p q)))
+        (rewrite-alias* object?    2 p q)))
 
   (defrecord AliasStore [store aliases]
     PStatementAccess
@@ -666,9 +655,10 @@ ones. Aliases can be defined and removed at any time.
     (union
       [_ p q]
       (let [aliases (u/union aliases p q)
-            store (if (u/canonical? aliases q)
-                    (rewrite-alias store p q)
-                    store)]
+            canon (u/canonical aliases p)
+            store (if (= p canon)
+                    (rewrite-alias store q canon)
+                    (rewrite-alias store p canon))]
         (AliasStore. store aliases))))
 #+END_SRC
 *** Triple graph (WIP)
