@@ -193,6 +193,14 @@
     (map
      (fn [r] (into {} (map (fn [[k v]] [(-> k qvar-name keyword) v]) r)))
      res))
+
+  (defn compile-filter-fn
+   [filters]
+   (fn [res] (every? (fn [[k v]] (v (res k))) filters)))
+
+  (defn compile-bind-fn
+   [bindings]
+   (fn [res] (reduce-kv (fn [acc k f] (assoc acc k (f res (res k)))) res bindings)))
 #+END_SRC
 
 *** Graphviz export
@@ -208,8 +216,9 @@
       "node[color=\"black\",style=\"filled\",fontname=\"Inconsolata\",fontcolor=\"white\"];\n"
       "edge[fontname=\"Inconsolata\",fontsize=\"9\"];\n"
       (map
-       (fn [[s p o]]
-         (str "\"" (pr-str s) "\" -> \"" (pr-str o) "\" [label=\"" (pr-str p) "\"];\n"))
+       (fn [t]
+         (let [[s p o] (map #(if (string? %) % (pr-str %)) t)]
+           (str "\"" s "\" -> \"" o "\" [label=\"" p "\"];\n")))
        triples)
       "}")))
 #+END_SRC
@@ -256,17 +265,17 @@
              [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
              [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
              [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
-             res (api/select ds qs qp qo)]
+             res     (api/select ds qs qp qo)]
          (if (seq res)
            (let [verify (triple-verifier t vs? vp? vo?)
                  flt (opts :filter)
                  res-fn (if flt
-                          #(if (verify %)
-                             (let [vbinds (select-renamed-keys % vm)]
-                               (if (flt vbinds)
-                                 vbinds)))
-                          #(if (verify %)
-                             (select-renamed-keys % vm)))]
+                          (let [flt (if (map? flt) (compile-filter-fn flt) flt)]
+                            #(if (verify %)
+                               (let [vbinds (select-renamed-keys % vm)]
+                                 (if (flt vbinds)
+                                   vbinds))))
+                          #(if (verify %) (select-renamed-keys % vm)))]
              (->> res
                   (map res-fn)
                   (filter identity)))))))
@@ -276,8 +285,10 @@
        (select-join ds {} {} patterns))
     ([ds bindings {bind :bind flt :filter opt? :optional?} patterns]
        (let [[p & ps] (sort-patterns patterns)
-             res (select-with-bindings ds bindings {} p)
-             join-fn (if opt? join-optional join)]
+             res      (select-with-bindings ds bindings {} p)
+             join-fn  (if opt? join-optional join)
+             flt      (if (and flt (map? flt)) (compile-filter-fn flt) flt)
+             bind     (if (and bind (map? bind)) (compile-bind-fn bind) bind)]
          (if (seq res)
            (loop [res res, ps ps]
              (if ps
