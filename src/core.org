@@ -66,34 +66,11 @@ at once.
           (filter flt (inner 1))
           (inner 1))))
      coll))
+
+  (defn trace [prefix x] (prn prefix x) x)
 #+END_SRC
 
 ** Triple datatype
-*** Protocol helpers
-#+BEGIN_SRC clojure :noweb-ref triple
-  ,#+clj
-  (defn map-entry
-    [k v]
-    (reify
-      clojure.lang.IMapEntry
-      java.util.Map$Entry
-      (key [_] k)
-      (getKey [_] k)
-      (val [_] v)
-      (getValue [_] v)
-      (hashCode [_]
-        (-> 31
-            (unchecked-add-int (hash k))
-            (unchecked-multiply-int 31)
-            (unchecked-add-int (hash v))))
-      (equals [_ x]
-        (and (instance? java.util.Map$Entry x)
-             (clojure.lang.Util/equals
-              k (.getKey ^java.util.Map$Entry x))
-             (clojure.lang.Util/equals
-              v (.getValue ^java.util.Map$Entry x))))))
-#+END_SRC
-
 *** Templates
 
 In order to deduplicate shared code between both the Clojure &
@@ -202,7 +179,7 @@ of the code.
 *** Implementation
 #+BEGIN_SRC clojure :noweb-ref triple
   (deftype Triple
-    #+clj  [s p o ^:volatile-mutable __hash]
+    #+clj  [s p o ^:unsynchronized-mutable __hash]
     #+cljs [s p o ^:mutable __hash]
 #+END_SRC
 **** Clojure
@@ -229,8 +206,8 @@ of the code.
          [_ args]
          <<tpl-apply(fn="swizzle")>>)
 
-  ,#+clj clojure.lang.Associative
   ,#+clj clojure.lang.IPersistentVector
+  ,#+clj clojure.lang.Associative
   ,#+clj (count
          [_] 3)
   ,#+clj (length
@@ -238,7 +215,7 @@ of the code.
   ,#+clj (containsKey
          [_ k] <<tpl-contains-key>>)
   ,#+clj (entryAt
-         [_ k] (map-entry k <<tpl-nth-err>>))
+         [_ k] (clojure.lang.MapEntry. k <<tpl-nth-err>>))
   ,#+clj (assoc
             [_ k v] (swizzle-assoc _ k v))
   ,#+clj (assocN
@@ -255,8 +232,7 @@ of the code.
   ,#+clj (size
          [_] 3)
 
-  ,#+clj clojure.lang.IPersistentCollection
-  ,#+clj clojure.lang.Indexed
+  ;;,#+clj clojure.lang.IPersistentVector
   ,#+clj clojure.lang.Sequential
   ,#+clj clojure.lang.ISeq
   ,#+clj clojure.lang.Seqable
@@ -433,8 +409,8 @@ of the code.
 
 *** Override print methods
 #+BEGIN_SRC clojure :noweb-ref triple
-  ,#+clj (require 'clojure.pprint)
-  ,#+clj (prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector clojure.lang.ISeq)
+  ,#+clj (defmethod clojure.pprint/simple-dispatch Triple
+    [^Triple o] ((get-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector) o))
   ,#+clj (defmethod print-method Triple [^Triple o ^java.io.Writer w] (.write w (.toString o)))
 #+END_SRC
 
@@ -508,8 +484,7 @@ of the code.
     PStatementAccess
     (add-statement
       [_ [s p o :as t]]
-      (if (-> spo (get s nil) (get p nil) (get t nil))
-        _
+      (if (-> spo (get s nil) (get p nil) (get t nil)) _
         (let [s (get (find spo s) 0 s)
               p (get (find pos p) 0 p)
               o (get (find osp o) 0 o)
@@ -611,6 +586,91 @@ of the code.
             (->> spo vals (mapcat vals) (apply concat)))))))
 #+END_SRC
 
+*** Store with alias support
+
+Some use cases require support for aliasing resources stored in
+triples. For example in RDF resources can be declared as equal via an
+=owl:sameAs= relationship.
+
+The =AliasStore= defined below achieves this goal by wrapping an
+existing triplestore and combines it with an Union Find index to allow
+registration of aliases and queries using them.
+
+Union Find is based on the concept of disjoint sets of connected
+components. For each component (set) a single canonical value is
+chosen. In the case of the =AliasStore= this means any triples
+containing aliased values will be rewritten to contain only canonical
+values. This happens with already existing triples and newly added
+ones. Aliases can be defined and removed at any time.
+
+#+BEGIN_SRC clojure :noweb-ref alias-store
+  (defn rewrite-alias*
+    [ds pred id p q]
+    (if (pred ds p)
+      (let [xs (apply select ds (assoc [nil nil nil] id p))
+            ds (remove-bulk ds xs)]
+        (add-bulk ds (map #(assoc % id q) xs)))
+      ds))
+
+  (defn rewrite-alias
+    [ds p q]
+    (-> ds
+        (rewrite-alias* subject? 0 p q)
+        (rewrite-alias* predicate? 1 p q)
+        (rewrite-alias* object? 2 p q)))
+
+  (defrecord AliasStore [store aliases]
+    PStatementAccess
+    (add-statement
+      [_ [s p o]]
+      (let [t [(or (u/canonical aliases s) s)
+               (or (u/canonical aliases p) p)
+               (or (u/canonical aliases o) o)]]
+        (AliasStore. (add-statement store t) aliases)))
+    (add-bulk
+      [_ statements]
+      (loop [store store, xs statements]
+        (if xs
+          (let [[s p o] (first xs)
+                t [(or (u/canonical aliases s) s)
+                   (or (u/canonical aliases p) p)
+                   (or (u/canonical aliases o) o)]]
+            (recur (add-statement store t) (next xs)))
+          (AliasStore. store aliases))))
+
+    PModel
+    (select
+      [_] (select _ nil nil nil))
+    (select
+      [_ s p o]
+      (let [s (or (u/canonical aliases s) s)
+            p (or (u/canonical aliases p) p)
+            o (or (u/canonical aliases o) o)]
+        (select store s p o)))
+
+    u/PUnionFind
+    (canonical [_ p] (u/canonical aliases p))
+    (canonical? [_ p] (u/canonical? aliases p))
+    (component [_ p] (u/component aliases p))
+    (disjoint-components [_] (u/disjoint-components aliases))
+    (register [_ p] (AliasStore. store (u/register aliases p)))
+    (unregister
+      [_ p]
+      (if (u/canonical? aliases p)
+        (let [q (first (disj (u/component aliases p) p))
+              aliases (u/unregister aliases p)
+              store (if q (rewrite-alias store p q) store)]
+          (AliasStore. store aliases))
+        (AliasStore. store (u/unregister aliases p))))
+    (unified? [_ p q] (u/unified? aliases p q))
+    (union
+      [_ p q]
+      (let [aliases (u/union aliases p q)
+            store (if (u/canonical? aliases q)
+                    (rewrite-alias store p q)
+                    store)]
+        (AliasStore. store aliases))))
+#+END_SRC
 *** Triple graph (WIP)
 
 Currently highly inefficient (4-5x slower than =PlainMemoryStore=),
@@ -732,6 +792,10 @@ joins...
   (defn plain-store
     [& triples]
     (add-bulk (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
+
+  (defn alias-store
+    [store aliases & triples]
+    (add-bulk (reduce (partial apply u/union) (AliasStore. store (u/disjoint-set)) aliases) triples))
 #+END_SRC
 
 ** Multi-store dataset
@@ -808,7 +872,9 @@ joins...
     (:refer-clojure :exclude [object? indexed?])
     (:require
      [thi.ng.common.data.core :as d]
+     [thi.ng.common.data.unionfind :as u]
      [thi.ng.common.error :as err]
+     ,#+clj [clojure.pprint]
      ,#+clj [clojure.core.protocols :as cp]))
 
   <<protos>>
@@ -820,6 +886,8 @@ joins...
   <<triple>>
 
   <<memstore>>
+
+  <<alias-store>>
 
   <<dataset>>
 
