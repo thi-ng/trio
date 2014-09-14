@@ -184,7 +184,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-2202"]
+[org.clojure/clojurescript "0.0-2322"]
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
@@ -287,8 +287,6 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
     :source-paths ["src/cljx"]
     :test-paths ["<<gen-test-path>>"]
 
-    :jvm-opts ^:replace []
-
     :profiles {:dev {:dependencies [<<dep-cljs>>
                                     <<dep-criterium>>]
                      :plugins [<<dep-cljx>>
@@ -296,7 +294,7 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
                                <<dep-cljs-test>>
                                <<dep-austin>>]
                      :hooks [cljx.hooks]
-                     :jvm-args ^:replace []
+                     :jvm-opts ^:replace []
                      :aliases {"cleantest" ["do" "clean," "test," "cljsbuild" "test"]}}}
 
     :cljx {:builds [{:source-paths ["src/cljx"]
