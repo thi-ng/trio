@@ -188,7 +188,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
-[thi.ng/common "0.2.0-SNAPSHOT"]
+[thi.ng/common "0.3.0-SNAPSHOT"]
 #+END_SRC
 *** Development
 **** [[https://github.com/cemerick/austin][Austin]]
@@ -296,6 +296,7 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
                                <<dep-cljs-test>>
                                <<dep-austin>>]
                      :hooks [cljx.hooks]
+                     :jvm-args ^:replace []
                      :aliases {"cleantest" ["do" "clean," "test," "cljsbuild" "test"]}}}
 
     :cljx {:builds [{:source-paths ["src/cljx"]
