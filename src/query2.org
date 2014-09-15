@@ -515,6 +515,32 @@ Select only children & grandchildren for given person:
      true       (compile-query-step select :filter-vars)
      group      (compile-query-step group :group)))
 
+  (defmethod compile-query-step :construct-triples
+    [qfn {:keys [construct] :as q} _]
+    (fn [res]
+      (->> res
+           qfn
+           (mapcat
+            (fn [r]
+              (map
+               (fn [[s p o]]
+                 (let [s (if (qvar? s) (r s) s)
+                       p (if (qvar? p) (r p) p)
+                       o (if (qvar? o) (r o) o)]
+                   (if (and s p o) (api/triple s p o))))
+               construct)))
+           (filter identity)
+           (set))))
+
+  (defmethod compile-query-step :construct
+    [qfn q _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :group)
+                (assoc :select :*))]
+      (-> qfn
+          (compile-query-step q :select)
+          (compile-query-step q :construct-triples))))
+
   (defn compile-query
     [q]
     (if-let [type (some #{:select :ask :construct :delete} (keys q))]
