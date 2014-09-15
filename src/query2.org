@@ -411,10 +411,78 @@ Select only children & grandchildren for given person:
 #+END_SRC
 
 ** Highlevel query processing
+#+BEGIN_SRC clojure
+  (process-query
+   {:select '[?g ?c]
+    :from ds
+    :query [{:where '[[?g father ?p] [?p father ?c]]
+             :filter '{?g #{ingo kurt}}
+             :optional {:where '[[?g alive false]]
+                        :filter nil}}]
+    :bindings '{?p (fn [res _] (str (res '?p) "->" (res '?c)))}})
+#+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref processor
+  (defmulti compile-query-step
+    (fn [qfn q type] type))
+
+  (defmethod compile-query-step :join
+    [qfn {:keys [from where filter bind]} _]
+    (prn :join where)
+    (fn [res]
+      (let [a (qfn res)
+            b (select-join from {} {:filter filter :bind bind} where)
+            res' (if (= ::empty a) b (join a b))]
+        res')))
+
+  (defmethod compile-query-step :join-optional
+    [qfn {:keys [from where filter bind]} _]
+    (prn :join-opt where)
+    (fn [res]
+      (let [a (qfn res)
+            b (select-join from {} {:filter filter :bind bind} where)
+            res' (if (= ::empty a) b (join-optional a b))]
+        res')))
+
+  (defmethod compile-query-step :bind
+    [qfn {:keys [bind]} _]
+    (prn :bindings bind)
+    (let [bind (if (fn? bind)
+                     bind
+                     (compile-bind-fn bind))]
+      (fn [res] (map bind (qfn res)))))
+
+  (defmethod compile-query-step :multi-query
+    [qfn {:keys [from query]} _]
+    (prn :multi query)
+    (loop [qfn qfn, query query]
+      (if query
+        (let [q (first query)
+              q (if (:from q) q (assoc q :from from))
+              qfn (compile-query-step qfn q :join)
+              qfn (if (:optional q)
+                    (compile-query-step
+                     qfn (assoc (:optional q) :from from) :join-optional)
+                    qfn)]
+          (recur qfn (next query)))
+        qfn)))
+
+  (defmethod compile-query-step :select
+    [qfn {:keys [select from query bind] :as q} _]
+    (prn :select select)
+    (let [qfn (compile-query-step qfn q :multi-query)
+          qfn (compile-query-step qfn q :bind)]
+      qfn))
+
+  (defn compile-query
+    [q]
+    (if-let [type (some #{:select :ask :construct :delete} (keys q))]
+      (compile-query-step identity q type)
+      (err/unsupported! "Unsupported query type")))
+
   (defn process-query
-   [{:keys [select ask construct]}])
+    [q]
+    (if (fn? q) (q ::empty) ((compile-query q) ::empty)))
 #+END_SRC
 
 ** Examples
@@ -439,6 +507,7 @@ Select only children & grandchildren for given person:
     (:require
      [thi.ng.trio.core :as api]
      [thi.ng.common.data.core :as d]
+     [thi.ng.common.error :as err]
      [thi.ng.common.data.unionfind :as uf]
      [clojure.set :as set]
      [clojure.core.reducers :as r]))
@@ -450,4 +519,6 @@ Select only children & grandchildren for given person:
   <<selectors>>
 
   <<dfs>>
+
+  <<processor>>
 #+END_SRC
