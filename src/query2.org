@@ -423,34 +423,39 @@ Select only children & grandchildren for given person:
 #+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref processor
+  (defn query-opts
+    [filter bind]
+    {:filter (if (fn? filter)
+               filter
+               (compile-filter-fn filter))
+     :bind   (if (fn? bind)
+               bind
+               (compile-bind-fn bind))})
+
   (defmulti compile-query-step
     (fn [qfn q type] type))
 
   (defmethod compile-query-step :join
     [qfn {:keys [from where filter bind]} _]
     (prn :join where)
-    (fn [res]
-      (let [a (qfn res)
-            b (select-join from {} {:filter filter :bind bind} where)
-            res' (if (= ::empty a) b (join a b))]
-        res')))
+    (let [opts (query-opts filter bind)]
+      (fn [res]
+        (let [a (qfn res)]
+          (if (or (= ::empty a) (seq a))
+            (let [b (select-join from {} opts where)
+                  res' (if (= ::empty a) b (join a b))]
+              res')
+            a)))))
 
   (defmethod compile-query-step :join-optional
     [qfn {:keys [from where filter bind]} _]
     (prn :join-opt where)
-    (fn [res]
-      (let [a (qfn res)
-            b (select-join from {} {:filter filter :bind bind} where)
-            res' (if (= ::empty a) b (join-optional a b))]
-        res')))
-
-  (defmethod compile-query-step :bind
-    [qfn {:keys [bind]} _]
-    (prn :bindings bind)
-    (let [bind (if (fn? bind)
-                     bind
-                     (compile-bind-fn bind))]
-      (fn [res] (map bind (qfn res)))))
+    (let [opts (query-opts filter bind)]
+      (fn [res]
+        (let [a (qfn res)
+              b (select-join from {} opts where)
+              res' (if (= ::empty a) b (join-optional a b))]
+          res'))))
 
   (defmethod compile-query-step :multi-query
     [qfn {:keys [from query]} _]
@@ -467,12 +472,32 @@ Select only children & grandchildren for given person:
           (recur qfn (next query)))
         qfn)))
 
+  (defmethod compile-query-step :bind
+    [qfn bind _]
+    (prn :bindings bind)
+    (let [bind (if (fn? bind)
+                 bind
+                 (compile-bind-fn bind))]
+      (fn [res] (map bind (qfn res)))))
+
+  (defmethod compile-query-step :order-asc
+    [qfn order _]
+    (prn :order-asc order)
+    (fn [res] (order-asc order (qfn res))))
+
+  (defmethod compile-query-step :order-desc
+    [qfn order _]
+    (prn :order-desc order)
+    (fn [res] (order-desc order (qfn res))))
+
   (defmethod compile-query-step :select
-    [qfn {:keys [select from query bind] :as q} _]
+    [qfn {:keys [select from query bind order-asc order-desc] :as q} _]
     (prn :select select)
-    (let [qfn (compile-query-step qfn q :multi-query)
-          qfn (compile-query-step qfn q :bind)]
-      qfn))
+    (cond->
+     (compile-query-step qfn q :multi-query)
+     bind       (compile-query-step bind :bind)
+     order-asc  (compile-query-step order-asc :order-asc)
+     order-desc (compile-query-step order-desc :order-desc)))
 
   (defn compile-query
     [q]
