@@ -119,7 +119,7 @@
     [map] (== (count (into #{} (vals map))) (count map)))
 
   (defn accumulate-result-vars
-    "Takes a query result map and returns map of all found qvars
+    "Takes a query result map seq and returns map of all found qvars
     as keys and their value sets."
     ([res] (accumulate-result-vars {} nil res))
     ([acc vars res]
@@ -128,7 +128,7 @@
           (merge-with
            (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
            acc (if vars (select-keys b vars) b)))
-        acc (keys res))))
+        acc res)))
 
   (defn accumulate-var-triples
     "Takes a qvar, a value for that var and a query result map.
@@ -273,8 +273,7 @@
                           (let [flt (if (map? flt) (compile-filter-fn flt) flt)]
                             #(if (verify %)
                                (let [vbinds (select-renamed-keys % vm)]
-                                 (if (flt vbinds)
-                                   vbinds))))
+                                 (if (flt vbinds) vbinds))))
                           #(if (verify %) (select-renamed-keys % vm)))]
              (->> res
                   (map res-fn)
@@ -287,8 +286,8 @@
        (let [[p & ps] (sort-patterns patterns)
              res      (select-with-bindings ds bindings {} p)
              join-fn  (if opt? join-optional join)
-             flt      (if (and flt (map? flt)) (compile-filter-fn flt) flt)
-             bind     (if (and bind (map? bind)) (compile-bind-fn bind) bind)]
+             flt      (if (map? flt) (compile-filter-fn flt) flt)
+             bind     (if (map? bind) (compile-bind-fn bind) bind)]
          (if (seq res)
            (loop [res res, ps ps]
              (if ps
@@ -556,9 +555,27 @@ Select only children & grandchildren for given person:
           qfn (compile-query-step qfn q :select)]
       (fn [res] (if (seq (qfn res)) true false))))
 
+  (defmethod compile-query-step :describe
+    [qfn {:keys [from describe] :as q} _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :group)
+                (assoc :select :*))
+          qfn (compile-query-step qfn q :select)
+          describe (if (sequential? describe) describe [describe])]
+      (fn [res]
+        (let [res (qfn res)
+              vars (select-keys (accumulate-result-vars res) describe)]
+          (if (seq vars)
+            (mapcat
+             (fn [v]
+               (let [vals (vars v)
+                     vals (if (coll? vals) vals [vals])]
+                 (mapcat #(api/select from % nil nil) vals)))
+             (keys vars)))))))
+
   (defn compile-query
     [q]
-    (if-let [type (some #{:select :ask :construct} (keys q))]
+    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
       (compile-query-step identity q type)
       (err/unsupported! "Unsupported query type")))
 
