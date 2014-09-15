@@ -196,7 +196,7 @@
 
   (defn compile-filter-fn
    [filters]
-   (fn [res] (every? (fn [[k v]] (v (res k))) filters)))
+   (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
 
   (defn compile-bind-fn
    [bindings]
@@ -462,8 +462,9 @@ Select only children & grandchildren for given person:
     (let [opts (query-opts filter bind)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join from {} opts optional)
-              res' (if (= ::empty a) b (join-optional a b))]
+              b (select-join from {} {:bind (:bind opts)} optional)
+              res' (if (= ::empty a) b (join-optional a b))
+              res' (if filter (clojure.core/filter (:filter opts) res') res')]
           res'))))
 
   (defmethod compile-query-step :multi-query
@@ -580,8 +581,7 @@ Select only children & grandchildren for given person:
       (err/unsupported! "Unsupported query type")))
 
   (defn query
-    [q]
-    (if (fn? q) (q ::empty) ((compile-query q) ::empty)))
+    [q] ((if (fn? q) q (compile-query q)) ::empty))
 #+END_SRC
 
 ** Examples
