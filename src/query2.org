@@ -412,15 +412,22 @@ Select only children & grandchildren for given person:
 
 ** Highlevel query processing
 #+BEGIN_SRC clojure
-  (process-query
-   {:select '[?g ?c]
+  (q/query
+   {:select :*
     :from ds
-    :query [{:join '[[?g father ?p]
-                     [?p father ?c]]
-             :filter '{?g #{ingo kurt}}}
-            {:optional '[[?m mother ?c]]}
-            {:union '[[?mm mother m]]}]
-    :bindings '{?p (fn [res _] (str (res '?p) "->" (res '?c)))}})
+    :query [{:join '[[?gf father ?f]
+                     [?f father ?c]]}
+            {:optional '[[?gm mother ?f]]}
+            {:optional '[[?c age ?a]]}]
+    :bind {'?a (fn [res a] (if a (str (res '?c) " is " a " years old")))}})
+
+  (q/query
+   {:construct '[[?gf grandfather ?c]
+                 [?gm grandmother ?c]]
+    :from ds
+    :query [{:join '[[?gf father ?f]
+                     [?gm mother ?f]
+                     [?f father ?c]]}]})
 #+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref processor
@@ -541,13 +548,21 @@ Select only children & grandchildren for given person:
           (compile-query-step q :select)
           (compile-query-step q :construct-triples))))
 
+  (defmethod compile-query-step :ask
+    [qfn q _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :bind :group)
+                (assoc :select :*))
+          qfn (compile-query-step qfn q :select)]
+      (fn [res] (if (seq (qfn res)) true false))))
+
   (defn compile-query
     [q]
-    (if-let [type (some #{:select :ask :construct :delete} (keys q))]
+    (if-let [type (some #{:select :ask :construct} (keys q))]
       (compile-query-step identity q type)
       (err/unsupported! "Unsupported query type")))
 
-  (defn process-query
+  (defn query
     [q]
     (if (fn? q) (q ::empty) ((compile-query q) ::empty)))
 #+END_SRC
