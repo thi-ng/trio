@@ -415,10 +415,11 @@ Select only children & grandchildren for given person:
   (process-query
    {:select '[?g ?c]
     :from ds
-    :query [{:where '[[?g father ?p] [?p father ?c]]
-             :filter '{?g #{ingo kurt}}
-             :optional {:where '[[?g alive false]]
-                        :filter nil}}]
+    :query [{:join '[[?g father ?p]
+                     [?p father ?c]]
+             :filter '{?g #{ingo kurt}}}
+            {:optional '[[?m mother ?c]]}
+            {:union '[[?mm mother m]]}]
     :bindings '{?p (fn [res _] (str (res '?p) "->" (res '?c)))}})
 #+END_SRC
 
@@ -436,24 +437,24 @@ Select only children & grandchildren for given person:
     (fn [qfn q type] type))
 
   (defmethod compile-query-step :join
-    [qfn {:keys [from where filter bind]} _]
-    (prn :join where)
+    [qfn {:keys [from join filter bind]} _]
+    (prn :join join)
     (let [opts (query-opts filter bind)]
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from {} opts where)
-                  res' (if (= ::empty a) b (join a b))]
+            (let [b (select-join from {} opts join)
+                  res' (if (= ::empty a) b (thi.ng.trio.query2/join a b))]
               res')
             a)))))
 
-  (defmethod compile-query-step :join-optional
-    [qfn {:keys [from where filter bind]} _]
-    (prn :join-opt where)
+  (defmethod compile-query-step :optional
+    [qfn {:keys [from optional filter bind]} _]
+    (prn :join-opt optional)
     (let [opts (query-opts filter bind)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join from {} opts where)
+              b (select-join from {} opts optional)
               res' (if (= ::empty a) b (join-optional a b))]
           res'))))
 
@@ -464,11 +465,9 @@ Select only children & grandchildren for given person:
       (if query
         (let [q (first query)
               q (if (:from q) q (assoc q :from from))
-              qfn (compile-query-step qfn q :join)
-              qfn (if (:optional q)
-                    (compile-query-step
-                     qfn (assoc (:optional q) :from from) :join-optional)
-                    qfn)]
+              qfn (cond
+                   (:join q)     (compile-query-step qfn q :join)
+                   (:optional q) (compile-query-step qfn q :optional))]
           (recur qfn (next query)))
         qfn)))
 
@@ -490,14 +489,20 @@ Select only children & grandchildren for given person:
     (prn :order-desc order)
     (fn [res] (order-desc order (qfn res))))
 
+  (defmethod compile-query-step :group
+    [qfn group _]
+    (prn :group group)
+    (fn [res] (group-by group (qfn res))))
+
   (defmethod compile-query-step :select
-    [qfn {:keys [select from query bind order-asc order-desc] :as q} _]
+    [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
     (prn :select select)
     (cond->
      (compile-query-step qfn q :multi-query)
      bind       (compile-query-step bind :bind)
      order-asc  (compile-query-step order-asc :order-asc)
-     order-desc (compile-query-step order-desc :order-desc)))
+     order-desc (compile-query-step order-desc :order-desc)
+     group      (compile-query-step group :group)))
 
   (defn compile-query
     [q]
