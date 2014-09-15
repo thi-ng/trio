@@ -426,12 +426,14 @@ Select only children & grandchildren for given person:
 #+BEGIN_SRC clojure :noweb-ref processor
   (defn query-opts
     [filter bind]
-    {:filter (if (fn? filter)
-               filter
-               (compile-filter-fn filter))
-     :bind   (if (fn? bind)
-               bind
-               (compile-bind-fn bind))})
+    {:filter (if filter
+               (if (fn? filter)
+                 filter
+                 (compile-filter-fn filter)))
+     :bind   (if bind
+               (if (fn? bind)
+                 bind
+                 (compile-bind-fn bind)))})
 
   (defmulti compile-query-step
     (fn [qfn q type] type))
@@ -494,6 +496,14 @@ Select only children & grandchildren for given person:
     (prn :group group)
     (fn [res] (group-by group (qfn res))))
 
+  (defmethod compile-query-step :filter-vars
+    [qfn vars _]
+    (prn :select-vars vars)
+    (cond
+     (= :* vars)        qfn
+     (sequential? vars) (fn [res] (map #(select-keys % vars) (qfn res)))
+     :else              (compile-query-step qfn [vars] :filter-vars)))
+
   (defmethod compile-query-step :select
     [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
     (prn :select select)
@@ -502,6 +512,7 @@ Select only children & grandchildren for given person:
      bind       (compile-query-step bind :bind)
      order-asc  (compile-query-step order-asc :order-asc)
      order-desc (compile-query-step order-desc :order-desc)
+     true       (compile-query-step select :filter-vars)
      group      (compile-query-step group :group)))
 
   (defn compile-query
