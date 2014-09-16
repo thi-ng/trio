@@ -252,6 +252,19 @@
           (if (seq new)
             (into (apply disj (set a) (persistent! old)) new)
             a)))))
+
+   (defn minus
+     [a b]
+     (let [vars (accumulate-result-vars b)]
+       (reduce-kv
+        (fn [res k v]
+          (let [v (if (coll? v) v [v])]
+            (reduce
+             (fn [res v] (vec (remove (fn [r] (= (r k) v)) res))) res v)))
+        a vars)))
+
+   (defn union
+     [a b] (set (concat a b)))
 #+END_SRC
 
 ** Select
@@ -308,7 +321,7 @@ expanded cyclically for =depth= hops, e.g:
 
  : (select-transitive ds '[?s [mother father] ?o] 3 3)
 
-Else, the fn takes a standard pattern with the subject or object either a given
+Else the fn takes a standard pattern with the subject or object either a given
 constant or qvar:
 
 Select all 'mother' rels from 1 - 3 hops (i.e. from mother -> great-grandmother)
@@ -321,6 +334,10 @@ Select only children & grandchildren for given person:
  : (select-transitive ds '[john father ?c] 2 2)
  : ;; same as...
  : (select-join ds '[[john father ?p] [?p father ?c]])
+
+*** TODO Specifying variable length paths
+
+- http://www.w3.org/TR/sparql11-query/#propertypaths
 
 #+BEGIN_SRC clojure :noweb-ref dfs
   (defn subvec-slices
@@ -410,6 +427,9 @@ Select only children & grandchildren for given person:
 #+END_SRC
 
 ** Highlevel query processing
+
+*** Examples
+
 #+BEGIN_SRC clojure
   (q/query
    {:select :*
@@ -429,9 +449,11 @@ Select only children & grandchildren for given person:
                      [?f father ?c]]}]})
 #+END_SRC
 
+*** Query compiler
+
 #+BEGIN_SRC clojure :noweb-ref processor
   (defn query-opts
-    [filter bind]
+    [{:keys [filter bind]}]
     {:filter (if filter
                (if (fn? filter)
                  filter
@@ -445,26 +467,45 @@ Select only children & grandchildren for given person:
     (fn [qfn q type] type))
 
   (defmethod compile-query-step :join
-    [qfn {:keys [from join filter bind]} _]
-    (prn :join join)
-    (let [opts (query-opts filter bind)]
+    [qfn {:keys [from where] :as q} _]
+    (prn :join where)
+    (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from {} opts join)
-                  res' (if (= ::empty a) b (thi.ng.trio.query2/join a b))]
+            (let [b (select-join from {} opts where)
+                  res' (if (= ::empty a) b (join a b))]
               res')
             a)))))
 
   (defmethod compile-query-step :optional
-    [qfn {:keys [from optional filter bind]} _]
+    [qfn {:keys [from optional] :as q} _]
     (prn :join-opt optional)
-    (let [opts (query-opts filter bind)]
+    (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join from {} {:bind (:bind opts)} optional)
-              res' (if (= ::empty a) b (join-optional a b))
-              res' (if filter (clojure.core/filter (:filter opts) res') res')]
+              b (select-join from {} opts optional)
+              res' (if (= ::empty a) b (join-optional a b))]
+          res'))))
+
+  (defmethod compile-query-step :minus
+    [qfn {:keys [from minus] :as q} _]
+    (prn :minus minus)
+    (let [opts (query-opts q)]
+      (fn [res]
+        (let [a (qfn res)
+              b (select-join from {} opts minus)
+              res' (if (= ::empty a) b (thi.ng.trio.query/minus a b))]
+          res'))))
+
+  (defmethod compile-query-step :union
+    [qfn {:keys [from union] :as q} _]
+    (prn :union union)
+    (let [opts (query-opts q)]
+      (fn [res]
+        (let [a (qfn res)
+              b (select-join from {} opts union)
+              res' (if (= ::empty a) b (thi.ng.trio.query/union a b))]
           res'))))
 
   (defmethod compile-query-step :multi-query
@@ -475,8 +516,10 @@ Select only children & grandchildren for given person:
         (let [q (first query)
               q (if (:from q) q (assoc q :from from))
               qfn (cond
-                   (:join q)     (compile-query-step qfn q :join)
-                   (:optional q) (compile-query-step qfn q :optional))]
+                   (:where q)    (compile-query-step qfn q :join)
+                   (:optional q) (compile-query-step qfn q :optional)
+                   (:minus q)    (compile-query-step qfn q :minus)
+                   (:union q)    (compile-query-step qfn q :union))]
           (recur qfn (next query)))
         qfn)))
 
@@ -601,7 +644,7 @@ Select only children & grandchildren for given person:
 #+END_SRC
 
 ** Complete namespace definition                                   :noexport:
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/query2.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/query.cljx :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.query
     (:require
      [thi.ng.trio.core :as api]
