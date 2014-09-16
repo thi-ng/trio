@@ -477,10 +477,22 @@
     [bindings v? x] (and v? (not (bindings x))))
 
   (defn bind-translator
-    [vs? vp? vo? [s p o] [s' p' o']]
+    [vs? vp? vo? [s p o]]
     (if vs?
-      (if vp? (if vo? {0 s' 1 p' 2 o'} {0 s' 1 p'}) (if vo? {0 s' 2 o'} {0 s'}))
-      (if vp? (if vo? {1 p' 2 o'} {1 p'}) (if vo? {2 o'}))))
+      (if vp?
+        (if vo?
+          (fn [[s' p' o']] {s s' p p' o o'})
+          (fn [[s' p']] {s s' p p'}))
+        (if vo?
+          (fn [[s' _ o']] {s s' o o'})
+          (fn [r] {s (first r)})))
+      (if vp?
+        (if vo?
+          (fn [[_ p' o']] {p p' o o'})
+          (fn [r] {p (r 1)}))
+        (if vo?
+          (fn [r] {o (r 2)})
+          (fn [_] {})))))
 
   (defn unbound-vars-translator
     [bindings vs? vp? vo? [s p o]]
@@ -505,16 +517,16 @@
     (let [patterns (produce-patterns-with-bound-vars t bindings)
           ;; _ (prn :patterns patterns)
           vs? (qvar? s), vp? (qvar? p), vo? (qvar? o)
-          vmap (bind-translator vs? vp? vo? t t)
+          vmap (bind-translator vs? vp? vo? t)
           pmap (unbound-vars-translator bindings vs? vp? vo? t)
           verify (triple-verifier t vs? vp? vo?)
           flt (opts :filter)
           res-fn (if flt
                    (let [flt (if (map? flt) (compile-filter-fn flt) flt)]
                      #(if (verify %)
-                        (let [vbinds (select-renamed-keys {} % vmap)]
+                        (let [vbinds (vmap %)]
                           (if (flt vbinds) vbinds))))
-                   #(if (verify %) (select-renamed-keys {} % vmap)))]
+                   #(if (verify %) (vmap %)))]
       (loop [acc (transient []), ps patterns]
         (if ps
           (let [[qs qp qo] (pmap (vec (first ps)))
