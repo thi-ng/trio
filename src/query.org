@@ -221,7 +221,7 @@
     (a symbol prefixed with *auto-qvar-prefix*)"
     [x] (and (symbol? x) (zero? (.indexOf ^String (name x) *auto-qvar-prefix*))))
 
-  (defn make-qvar
+  (defn auto-qvar
     "Creates a new auto-named qvar (symbol)."
     [] (gensym *auto-qvar-prefix*))
 
@@ -239,7 +239,7 @@
         [?s [p1 p2 p3] ?o]
         => ([?s p1 ?__q0] [?__q0 p2 ?__q1] [?__q1 p3 ?o])"
     [[s p o]]
-    (let [vars (->> make-qvar
+    (let [vars (->> auto-qvar
                     (repeatedly (dec (count p)))
                     (cons s))]
       (->> (concat (interleave vars p) [o])
@@ -332,23 +332,6 @@
            (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
            acc (if vars (select-keys b vars) b)))
         acc res)))
-
-  (defn accumulate-var-triples
-    "Takes a qvar, a value for that var and a query result map.
-    Returns reducible of all triples for which the qvar has given value."
-    [?v v res]
-    (#+clj r/mapcat #+cljs mapcat val
-           (#+clj r/filter #+cljs filter (fn [[k]] (= v (k ?v))) res)))
-
-  (defn replace-result-vars
-    "Takes a result map, a map of qvars to rename and a seq of qvars to remove.
-    Returns updated result map."
-    [res kmap rkeys]
-    (reduce-kv
-     (fn [res k v]
-       (let [k (reduce dissoc k rkeys)]
-         (assoc res (set/rename-keys k kmap) v)))
-     {} res))
 
   (defn select-renamed-keys
     "Similar to clojure.core/select-keys, but instead of key seq takes a
@@ -605,7 +588,7 @@ Select only children & grandchildren for given person:
     [ds s p sv acc min max]
     (if (<= (count acc) max)
       (let [acc (conj acc sv)
-            o (make-qvar)
+            o (auto-qvar)
             r (select-with-bindings ds {s sv} {} [s p o])]
         (if (seq r)
           (let [visited (set acc)
@@ -622,7 +605,7 @@ Select only children & grandchildren for given person:
     [ds o p ov acc min max]
     (if (<= (count acc) max)
       (let [acc (conj acc ov)
-            s (make-qvar)
+            s (auto-qvar)
             r (select-with-bindings ds {o ov} {} [s p o])]
         (if (seq r)
           (let [visited (set acc)
@@ -649,7 +632,7 @@ Select only children & grandchildren for given person:
              (select-join ds {} {} (resolve-path-pattern [s p o])))
            (let [vs? (qvar? s)
                  vo? (qvar? o)
-                 v (make-qvar)
+                 v (auto-qvar)
                  conf (cond
                        (and vs? vo?) {:s s ;; [?s p ?o]
                                       :o v
