@@ -40,11 +40,11 @@
                  (compile-bind-fn bind)))})
 
   (defn query-step
-    [qfn join-fn q patterns]
+    [qfn join-fn {:keys [from with] :as q} patterns]
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join (:from q) {} opts patterns)
+              b (select-join from with opts patterns)
               res' (if (= ::empty a) b (join-fn a b))]
           res'))))
 
@@ -52,44 +52,45 @@
     (fn [qfn q type] type))
 
   (defmethod compile-query-step :join
-    [qfn {:keys [from where] :as q} _]
-    (prn :join where)
+    [qfn {:keys [from with where] :as q} _]
+    (prn :join where with)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from {} opts where)
+            (let [b (select-join from with opts where)
                   res' (if (= ::empty a) b (join a b))]
               res')
             a)))))
 
   (defmethod compile-query-step :minus
-    [qfn {:keys [from minus] :as q} _]
-    (prn :minus minus)
+    [qfn {:keys [from with minus] :as q} _]
+    (prn :minus minus with)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
           (if (seq a)
-            (thi.ng.trio.query/minus a (select-join from {} opts minus))
+            (thi.ng.trio.query/minus a (select-join from with opts minus))
             a)))))
 
   (defmethod compile-query-step :optional
-    [qfn {:keys [from optional] :as q} _]
-    (prn :join-opt optional)
+    [qfn {:keys [from with optional] :as q} _]
+    (prn :join-opt optional with)
     (query-step qfn join-optional q optional))
 
   (defmethod compile-query-step :union
-    [qfn {:keys [from union] :as q} _]
-    (prn :union union)
+    [qfn {:keys [from with union] :as q} _]
+    (prn :union union with)
     (query-step qfn thi.ng.trio.query/union q union))
 
   (defmethod compile-query-step :multi-query
-    [qfn {:keys [from query]} _]
+    [qfn {:keys [from with query]} _]
     (prn :multi query)
     (loop [qfn qfn, query query]
       (if query
         (let [q (first query)
               q (if (:from q) q (assoc q :from from))
+              q (if (:with q) q (assoc q :with (or with {})))
               qfn (cond
                    (:where q)    (compile-query-step qfn q :join)
                    (:optional q) (compile-query-step qfn q :optional)
@@ -326,12 +327,15 @@
     as keys and their value sets."
     ([res] (accumulate-result-vars {} nil res))
     ([acc vars res]
-       (reduce
-        (fn [acc b]
-          (merge-with
-           (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
-           acc (if vars (select-keys b vars) b)))
-        acc res)))
+       (let [acc (reduce
+                  (fn [acc b]
+                    (merge-with
+                     (fn [a b] (if (set? a) (conj a b) (hash-set a b)))
+                     acc (if vars (select-keys b vars) b)))
+                  acc res)]
+         (reduce-kv
+          (fn [acc k v] (if (set? v) acc (assoc acc k #{v})))
+          acc acc))))
 
   (defn select-renamed-keys
     "Similar to clojure.core/select-keys, but instead of key seq takes a
@@ -381,12 +385,12 @@
      res))
 
   (defn compile-filter-fn
-   [filters]
-   (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
+    [filters]
+    (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
 
   (defn compile-bind-fn
-   [bindings]
-   (fn [res] (reduce-kv (fn [acc k f] (assoc acc k (f res (res k)))) res bindings)))
+    [bindings]
+    (fn [res] (reduce-kv (fn [acc k f] (assoc acc k (f res (res k)))) res bindings)))
 #+END_SRC
 
 *** Graphviz export
@@ -498,7 +502,7 @@
   (defn select-with-bindings
     [ds bindings opts [s p o :as t]]
     (let [patterns (produce-patterns-with-bound-vars t bindings)
-          ;; _ (prn :patterns patterns)
+          _ (prn :patterns patterns)
           vs? (qvar? s), vp? (qvar? p), vo? (qvar? o)
           vmap (bind-translator vs? vp? vo? t)
           pmap (unbound-vars-translator bindings vs? vp? vo? t)
@@ -513,7 +517,7 @@
       (loop [acc (transient []), ps patterns]
         (if ps
           (let [[qs qp qo] (pmap (vec (first ps)))
-                ;; _ (prn :select qs qp qo)
+                _ (prn :select qs qp qo)
                 res (api/select ds qs qp qo)]
             (if (seq res)
               (recur
@@ -535,12 +539,13 @@
        (let [[p & ps] (sort-patterns patterns)
              res      (select-with-bindings ds bindings {} p)
              join-fn  (if opt? join-optional join)
-             flt      (if (map? flt) (compile-filter-fn flt) flt)
+             flt      (if (map? flt)  (compile-filter-fn flt) flt)
              bind     (if (map? bind) (compile-bind-fn bind) bind)]
          (if (seq res)
            (loop [res res, ps ps]
              (if ps
-               (let [r' (select-with-bindings ds (accumulate-result-vars res) {} (first ps))
+               (let [binds (merge-with into (accumulate-result-vars res) bindings)
+                     r' (select-with-bindings ds binds {} (first ps))
                      res (if (seq r') (join-fn res r'))]
                  (if (seq res)
                    (recur res (next ps))))
