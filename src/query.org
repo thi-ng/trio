@@ -473,28 +473,6 @@
 ** Select
 
 #+BEGIN_SRC clojure :noweb-ref selectors
-  (defn select-with-bindings
-    ([ds t]
-       (select-with-bindings ds {} {} t))
-    ([ds bindings opts [s p o :as t]]
-       (let [vs? (qvar? s), vp? (qvar? p), vo? (qvar? o), vm {}
-             [qs vm] (if vs? [(bindings s) (assoc vm 0 s)] [s vm])
-             [qp vm] (if vp? [(bindings p) (assoc vm 1 p)] [p vm])
-             [qo vm] (if vo? [(bindings o) (assoc vm 2 o)] [o vm])
-             res     (api/select ds qs qp qo)]
-         (if (seq res)
-           (let [verify (triple-verifier t vs? vp? vo?)
-                 flt (opts :filter)
-                 res-fn (if flt
-                          (let [flt (if (map? flt) (compile-filter-fn flt) flt)]
-                            #(if (verify %)
-                               (let [vbinds (select-renamed-keys {} % vm)]
-                                 (if (flt vbinds) vbinds))))
-                          #(if (verify %) (select-renamed-keys {} % vm)))]
-             (->> res
-                  (map res-fn)
-                  (filter identity)))))))
-
   (defn unbound-var?
     [bindings v? x] (and v? (not (bindings x))))
 
@@ -504,30 +482,31 @@
       (if vp? (if vo? {0 s' 1 p' 2 o'} {0 s' 1 p'}) (if vo? {0 s' 2 o'} {0 s'}))
       (if vp? (if vo? {1 p' 2 o'} {1 p'}) (if vo? {2 o'}))))
 
-  (defn translate-unbound-vars
-    [bindings vs? vp? vo? [s p o] [s' p' o' :as t]]
+  (defn unbound-vars-translator
+    [bindings vs? vp? vo? [s p o]]
     (if (unbound-var? bindings vs? s)
       (if (unbound-var? bindings vp? p)
         (if (unbound-var? bindings vo? o)
-          [nil nil nil]
-          [nil nil o'])
+          (fn [p] [nil nil nil])
+          (fn [p] [nil nil (p 2)]))
         (if (unbound-var? bindings vo? o)
-          [nil p' nil]
-          [nil p' o']))
+          (fn [p] [nil (p 1) nil])
+          (fn [p] (assoc p 0 nil))))
       (if (unbound-var? bindings vp? p)
         (if (unbound-var? bindings vo? o)
-          [s' nil nil]
-          [s' nil o'])
+          (fn [p] [(p 0) nil nil])
+          (fn [p] (assoc p 1 nil)))
         (if (unbound-var? bindings vo? o)
-          [s' p' nil]
-          t))))
+          (fn [p] (assoc p 2 nil))
+          identity))))
 
-  (defn select-with-prebounds
+  (defn select-with-bindings
     [ds bindings opts [s p o :as t]]
     (let [patterns (produce-patterns-with-bound-vars t bindings)
+          ;; _ (prn :patterns patterns)
           vs? (qvar? s), vp? (qvar? p), vo? (qvar? o)
           vmap (bind-translator vs? vp? vo? t t)
-          _ (prn vmap)
+          pmap (unbound-vars-translator bindings vs? vp? vo? t)
           verify (triple-verifier t vs? vp? vo?)
           flt (opts :filter)
           res-fn (if flt
@@ -535,19 +514,24 @@
                      #(if (verify %)
                         (let [vbinds (select-renamed-keys {} % vmap)]
                           (if (flt vbinds) vbinds))))
-                   #(if (verify %) (select-renamed-keys {} % vmap)))
-          res (mapcat
-               (fn [p]
-                 (let [[qs qp qo] (translate-unbound-vars bindings vs? vp? vo? t p)
-                       _ (prn :select p :>> qs qp qo)
-                       res (api/select ds qs qp qo)]
-                   (if (seq res)
-                     (let []
-                       (->> res
-                            (map res-fn)
-                            (filter identity))))))
-               patterns)]
-      [(accumulate-result-vars bindings (vals vmap) res) res]))
+                   #(if (verify %) (select-renamed-keys {} % vmap)))]
+      (loop [acc (transient []), ps patterns]
+        (if ps
+          (let [[qs qp qo] (pmap (vec (first ps)))
+                ;; _ (prn :select qs qp qo)
+                res (api/select ds qs qp qo)]
+            (if (seq res)
+              (recur
+               (loop [acc acc, res res]
+                 (if res
+                   (let [r (res-fn (first res))]
+                     (if r
+                       (recur (conj! acc r) (next res))
+                       (recur acc (next res))))
+                   acc))
+               (next ps))
+              (recur acc (next ps))))
+          (persistent! acc)))))
 
   (defn select-join
     ([ds patterns]
@@ -561,7 +545,7 @@
          (if (seq res)
            (loop [res res, ps ps]
              (if ps
-               (let [r' (select-with-bindings ds bindings {} (first ps))
+               (let [r' (select-with-bindings ds (accumulate-result-vars res) {} (first ps))
                      res (if (seq r') (join-fn res r'))]
                  (if (seq res)
                    (recur res (next ps))))
