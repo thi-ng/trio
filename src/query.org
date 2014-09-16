@@ -527,6 +527,7 @@
     (let [patterns (produce-patterns-with-bound-vars t bindings)
           vs? (qvar? s), vp? (qvar? p), vo? (qvar? o)
           vmap (bind-translator vs? vp? vo? t t)
+          _ (prn vmap)
           verify (triple-verifier t vs? vp? vo?)
           flt (opts :filter)
           res-fn (if flt
@@ -534,18 +535,19 @@
                      #(if (verify %)
                         (let [vbinds (select-renamed-keys {} % vmap)]
                           (if (flt vbinds) vbinds))))
-                   #(if (verify %) (select-renamed-keys {} % vmap)))]
-      (mapcat
-       (fn [p]
-         (let [[qs qp qo] (translate-unbound-vars bindings vs? vp? vo? t p)
-               _ (prn :select p :>> qs qp qo)
-               res (api/select ds qs qp qo)]
-           (if (seq res)
-             (let []
-               (->> res
-                    (map res-fn)
-                    (filter identity))))))
-       patterns)))
+                   #(if (verify %) (select-renamed-keys {} % vmap)))
+          res (mapcat
+               (fn [p]
+                 (let [[qs qp qo] (translate-unbound-vars bindings vs? vp? vo? t p)
+                       _ (prn :select p :>> qs qp qo)
+                       res (api/select ds qs qp qo)]
+                   (if (seq res)
+                     (let []
+                       (->> res
+                            (map res-fn)
+                            (filter identity))))))
+               patterns)]
+      [(accumulate-result-vars bindings (vals vmap) res) res]))
 
   (defn select-join
     ([ds patterns]
