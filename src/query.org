@@ -4,7 +4,7 @@
 
 ** Highlevel query processing
 
-Triple stores not just provide high flexibility in terms of data
+Triplestores not just provide high flexibility in terms of data
 organization and storage, but also for querying purposes. The query
 engine implemented in this namespace is conceptually based on [[http://www.w3.org/TR/sparql11-query][SPARQL]],
 however does not entail any RDF specifics or semantics. Datalog (as
@@ -170,8 +170,48 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 [[../assets/query-example03.png]]
 
 ** Query compiler
+# <<queryopts>>
+*** Query options (filters, var injection)
 
-#+BEGIN_SRC clojure :noweb-ref processor
+Each subquery can define its own filters & variable injections. These
+query options are passed via the =:filter= and =:bind= keys. Both
+assume a function which is applied to each result binding map.
+However, for most use cases it is more convenient to specify these
+functions for individual query vars only and the following helpers
+allow us to do so.
+
+For example this sub-query asks for artists under 25 and injects a new
+qvar =?fullname= into each result:
+
+#+BEGIN_SRC clojure
+  {:where '[[?s :type :artist] [?s :age ?a] [?s :fname ?fn] [?s :surname ?sn]]
+   :filter {'?a #(< % 25)}
+   :bind   {'?fullname (fn [res _] (str (res '?fn) " " (res '?sn)))}}
+#+END_SRC
+
+If specified in this manner (as map with qvars as keys), =:filter=
+functions must accept a single arg, i.e. the value of the qvar
+binding. Any truthy return value will keep the result.
+
+On the other hand, =:bind= fns must accept 2 args: the full
+result map and the related qvar's value. The return value will be
+bound to the specified qvar in each result/solution, unless the
+function returns =nil=.
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn compile-filter-fn
+    [filters]
+    (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
+
+  (defn compile-bind-fn
+    [bindings]
+    (fn [res]
+      (reduce-kv
+       (fn [acc k f]
+         (let [rv (f res (res k))]
+           (if (nil? rv) (assoc acc k rv) acc)))
+       res bindings)))
+
   (defn query-opts
     [{:keys [filter bind]}]
     {:filter (if filter
@@ -182,7 +222,56 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
                (if (fn? bind)
                  bind
                  (compile-bind-fn bind)))})
+#+END_SRC
 
+*** Compiler steps
+
+The role of the query compiler is to translate query specs (plain
+hashmaps) into actual working code, as well as to reduce
+pre-processing for repetive queries. This compilation is realized via
+the =compile-query-step= multimethod in order to cleanly separate
+logic for each query element and keep the code legible.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmulti compile-query-step
+    (fn [qfn q type] type))
+#+END_SRC
+
+Essentially, each compile step is using composition to wrap its
+predecessor and combine that result with its own. To allow fail-fast
+behaviors for some phases, the namespaced =::empty= keyword is used as
+sentinel to distinguish the initially empty result set from an earlier
+failed search (=nil=).
+
+**** Public query API
+
+Currently, the query engine's public API consist of only these two
+functions. =query= accepts both pre-compiled queries or raw query
+specs. An exception is thrown if there're compile errors.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defn compile-query
+    [q]
+    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
+      (compile-query-step identity q type)
+      (err/unsupported! "Unsupported query type")))
+
+  (defn query
+    [q] ((if (fn? q) q (compile-query q)) ::empty))
+#+END_SRC
+
+**** Sub queries
+
+The engine currently supports the following subquery types:
+
+| *Type*        | *Key*     | *Options*                 | *Description*                                   |
+|---------------+-----------+---------------------------+-------------------------------------------------|
+| join          | :where    | :from :filter :bind :with | join/intersection of given patterns (fail fast) |
+| join optional | :optional | :from :filter :bind :with | natural join of given patterns                  |
+| union         | :union    | :from :filter :bind :with | add results to existing                         |
+| negation      | :minus    | :from :filter :bind :with | remove results from existing                    |
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defn query-step
     [qfn join-fn {:keys [from with] :as q} patterns]
     (let [opts (query-opts q)]
@@ -191,9 +280,6 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
               b (select-join from with opts patterns)
               res' (if (= ::empty a) b (join-fn a b))]
           res'))))
-
-  (defmulti compile-query-step
-    (fn [qfn q type] type))
 
   (defmethod compile-query-step :join
     [qfn {:keys [from with where] :as q} _]
@@ -226,7 +312,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
     [qfn {:keys [from with union] :as q} _]
     (prn :union union with)
     (query-step qfn thi.ng.trio.query/union q union))
+#+END_SRC
 
+**** Subquery dispatch
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :multi-query
     [qfn {:keys [from with query]} _]
     (prn :multi query)
@@ -242,7 +332,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
                    (:union q)    (compile-query-step qfn q :union))]
           (recur qfn (next query)))
         qfn)))
+#+END_SRC
 
+**** Result processing
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :bind
     [qfn bind _]
     (prn :bindings bind)
@@ -273,7 +367,48 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
      (= :* vars)        qfn
      (sequential? vars) (fn [res] (map #(select-keys % vars) (qfn res)))
      :else              (compile-query-step qfn [vars] :filter-vars)))
+#+END_SRC
 
+**** Query type: SELECT
+
+*Purpose:* Match patterns in graph, return sequence of all found
+solutions. Each solution is a map of unique qvar bindings.
+
+*Use cases:*
+
+| *Key*       | *Value(s)*                | *Description*                                                      | *Required* |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :select     | :*                        | Solutions contain all used qvars                                   | yes        |
+|             | '?var                     | Solutions contain only this single qvar                            |            |
+|             | '[?v1 ?v2 ...]            | Solutions contain only given qvars                                 |            |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :from       | trio.core/PModel instance | Default triplestore to use for all sub-queries                     | yes        |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :query      | [{sub-query} ...]         | Seq of any number of sub-queries (see [[Sub queries]])                 | yes        |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :bind       | fn or bindings map        | Inject/transform qvars in final solutions                          | no         |
+|             |                           | (see [[queryopts][Query options]])                                                |            |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :with       | '{?v1 #{a b} ?v2 c}       | Pre-bind qvars to given values for all subqueries                  | no         |
+|             |                           | in order to constrain search.                                      |            |
+|             |                           | If a value set is specified for a qvar, attempts all options given |            |
+|             |                           |                                                                    |            |
+|             |                           | *Note:* The same effect can be achieved with filters,              |            |
+|             |                           | though pre-binding will produce optimized queries                  |            |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :order-asc  | '?var                     | Sort solutions by qvar (ascending)                                 | no         |
+|             | '[?v1 ?v2 ..]             | Nested sort by first ?v1, ?v2 ...                                  |            |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :order-desc | same as =:order-asc=      | Sort solutions by qvar (descending)                                | no         |
+|-------------+---------------------------+--------------------------------------------------------------------+------------|
+| :group      | '?var                     | Group solutions by qvar                                            | no         |
+|             |                           |                                                                    |            |
+|             |                           | *Note:*                                                            |            |
+|             |                           | - returns solutions as map (not as seq)                            |            |
+|             |                           | - grouping occurs /after/ qvar filtering,                          |            |
+|             |                           | - hence can only group by qvars in =:select=                       |            |
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :select
     [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
     (prn :select select)
@@ -284,7 +419,36 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
      order-desc (compile-query-step order-desc :order-desc)
      true       (compile-query-step select :filter-vars)
      group      (compile-query-step group :group)))
+#+END_SRC
 
+**** Query type: CONSTRUCT
+
+*Purpose:* Matches patterns in graph(s) and binds values to qvars,
+then construct new triples using bound qvars solutions. Returns seq of
+constructed triples.
+
+*Use cases:*
+- Inference
+- Triple mapping/updating
+- Reification
+- Annotation
+- Adding of provenance data
+
+| *Key*      | *Value(s)*                | *Description*                                      | *Required* |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :construct | [pattern ...]             | solutions contain all used qvars                   | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :from      | trio.core/PModel instance | default triplestore to use for all sub-queries     | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]]) | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :bind      | fn or bindings map        | inject/transform qvars in final solutions          | no         |
+|            |                           | (see [[queryopts][Query options]])                                |            |
+
+Any other options supported by =:select= will be removed from the
+query spec.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :construct-triples
     [qfn {:keys [construct] :as q} _]
     (fn [res]
@@ -310,7 +474,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
       (-> qfn
           (compile-query-step q :select)
           (compile-query-step q :construct-triples))))
+#+END_SRC
 
+**** Query type: ASK
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :ask
     [qfn q _]
     (let [q (-> q
@@ -318,7 +486,17 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
                 (assoc :select :*))
           qfn (compile-query-step qfn q :select)]
       (fn [res] (if (seq (qfn res)) true false))))
+#+END_SRC
 
+**** Query type: DESCRIBE
+
+*Purpose:* Extract sub-graphs for nodes matched via query.
+
+*Use cases:*
+- REST APIs
+- Graph partitioning/segmentation
+
+#+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :describe
     [qfn {:keys [from describe] :as q} _]
     (let [q (-> q
@@ -337,15 +515,6 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
                      (into (mapcat #(api/select from % nil nil) vals))
                      (into (mapcat #(api/select from nil nil %) vals)))))
              #{} (keys vars)))))))
-
-  (defn compile-query
-    [q]
-    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
-      (compile-query-step identity q type)
-      (err/unsupported! "Unsupported query type")))
-
-  (defn query
-    [q] ((if (fn? q) q (compile-query q)) ::empty))
 #+END_SRC
 
 ** Helpers
@@ -371,6 +540,19 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 #+END_SRC
 
 *** Query pattern resolution & handling
+**** Specifying variable length paths
+
+- http://www.w3.org/TR/sparql11-query/#propertypaths
+
+| *Path pattern*          | *Description*                        | *Meaning*                                                     |
+|-------------------------+--------------------------------------+---------------------------------------------------------------|
+| =[?s [p1 p2] ?o]=       | fixed length path between =?s=, =?o= | equivalent to: ={:where '[[?s p1 ?x] [?x p2 ?o]}=             |
+| =[?s [:? p1 p2] ?o]=    | fixed length path, optional          | if path exists *fully*, bind =?s=, =?o=                       |
+| =[?s [:+ p1 p2] ?o]=    | full path, cyclic                    | if path exists *fully* one or more times, bind =?s=, =?o=     |
+| =[?s [:* p1 p2] ?o]=    | partial path, cyclic                 | if path exists *partially* one or more times, bind =?s=, =?o= |
+| =[?s [:not p] ?o]=      | single edge *not* via =p=            | equivalent to: ={:where [?s ?pp ?o]} {:minus [?s p ?o]}=      |
+| =[?s [:or p1 p2] ?o]=   | single edge =p1= *or* =p2=           | equivalent to: ={:where [?s p1 ?o]} {:union [?s p2 ?o]}=      |
+
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn resolve-path-pattern
     "Takes a path triple pattern where the predicate is a seq of preds.
@@ -394,10 +576,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
          (resolve-path-pattern t)
          [t]))
      patterns))
+#+END_SRC
 
-  ;; [?s [a b :+] ?o] - [?s [a b] ?o] min 1 max 1e6
-  ;; [?s [a b :^] ?o] - [?o [b a] ?s] 
+**** Pattern generation
 
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn produce-patterns-with-bound-vars
     "Takes a triple pattern (possibly with variables) and a map of
     possible value sets (each *must* be a set or single value) for each var.
@@ -417,7 +600,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
         (d/cartesian-product
          (if (set? s) s #{s}) (if (set? p) p #{p}) (if (set? o) o #{o}))
         [[s p o]])))
+#+END_SRC
 
+**** Query planning
+
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn sort-patterns
     "Sorts a seq of triple patterns in dependency order using any
     re-occuring vars. Triples with least qvars will be in head
@@ -428,7 +615,11 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
       (->> q
            (sort-by (fn [[c v]] (- (* c 4) (count (filter singles v)))))
            (map peek))))
+#+END_SRC
 
+**** Pattern based triple verification
+
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn triple-verifier
     "Takes a triple pattern (potentially with vars) and 3 booleans to
     indicate which SPO is a var. Returns fn which accepts a result triple
@@ -523,20 +714,6 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
     (map
      (fn [r] (into {} (map (fn [[k v]] [(-> k qvar-name keyword) v]) r)))
      res))
-
-  (defn compile-filter-fn
-    [filters]
-    (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
-
-  (defn compile-bind-fn
-    [bindings]
-    (fn [res]
-      (reduce-kv
-       (fn [acc k f]
-         (if-let [rv (f res (res k))]
-           (assoc acc k rv)
-           acc))
-       res bindings)))
 #+END_SRC
 
 *** Graphviz export
@@ -723,11 +900,7 @@ Select only grandchildren for given person:
  : (select-transitive ds '[john father ?c] 2 2)
  : ;; same as...
  : (select-join ds '[[john father ?p] [?p father ?c]])
-
-*** TODO Specifying variable length paths
-
-- http://www.w3.org/TR/sparql11-query/#propertypaths
-
+  
 #+BEGIN_SRC clojure :noweb-ref dfs
   (defn subvec-slices
     "Takes a min & max count and returns function accepting a vector as
@@ -834,5 +1007,5 @@ Select only grandchildren for given person:
 
   <<dfs>>
 
-  <<processor>>
+  <<compiler>>
 #+END_SRC
