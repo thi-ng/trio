@@ -153,10 +153,10 @@ The new graph with inferred triples marked in red:
 **** Subgraph extraction
 
 As a final introductory example, let's demonstrate how to extract
-anything we know subjects matched via an initial query/search, in this
-case people with nicknames and who are younger than 40. A =:describe=
-query returns all triples in which a bound result var is either a
-subject or object.
+anything we know about subjects matched via an initial query/search,
+in this case people with nicknames and who are younger than 40. A
+=:describe= query returns all triples in which a bound result var is
+either a subject or object.
 
 #+BEGIN_SRC clojure
   (q/query {:describe '?p :from g2 :query [{:where '[[?p nick ?n] [?p age ?a]] :filter {'?a #(< % 40)}}]})
@@ -349,11 +349,6 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 #+END_SRC
 
 ** Helpers
-
-#+BEGIN_SRC clojure :noweb-ref helpers
-  (defn trace [id _] (dorun _) (prn id _) _)
-#+END_SRC
-
 *** Query variables
 #+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
@@ -545,6 +540,8 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 #+END_SRC
 
 *** Graphviz export
+**** TODO move to separate ns
+
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn triples->dot
     "Takes a seq of triples and returns them as digraph spec in
@@ -707,9 +704,9 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 
 ** Transitive properties & path queries
 
-If same min/max search depth, resort to =select-join= with expanded pattern.
-In that case predicate can be a seq =[pred1 pred2 ..]= which is
-expanded cyclically for =depth= hops, e.g:
+If using equal min/max search depth, resort to =select-join= with
+expanded pattern. In that case the predicate can be a seq =[pred1
+pred2 ..]= which is expanded cyclically for =depth= hops, e.g:
 
  : (select-transitive ds '[?s [mother father] ?o] 3 3)
 
@@ -722,7 +719,7 @@ Select all 'mother' rels from 1 - 3 hops (i.e. from mother -> great-grandmother)
 If the object is not a qvar, the search is executed in reverse direction:
  : (select-transitive ds '[?m mother 'toxi])
 
-Select only children & grandchildren for given person:
+Select only grandchildren for given person:
  : (select-transitive ds '[john father ?c] 2 2)
  : ;; same as...
  : (select-join ds '[[john father ?p] [?p father ?c]])
@@ -816,22 +813,6 @@ Select only children & grandchildren for given person:
                   (r/mapcat slices)
                   (r/map    bind)
                   (into #{})))))))
-#+END_SRC
-
-** Examples
-
-#+BEGIN_SRC clojure
-  (q/join
-   (q/select-transitive ds '[?gp mother ?c])
-   (q/select-with-bindings ds '[?sp spouse ?c]))
-
-  (require
-   '[thi.ng.trio.core :refer :all]
-   '[thi.ng.trio.query2 :as q])
-
-  (def ds (apply plain-store (read-string (slurp "../dev/schmidts.clj"))))
-
-  (spit "schmidts.dot" (q/results->dot (q/select-transitive ds '[?s [mother father] ?c])))
 #+END_SRC
 
 ** Complete namespace definition                                   :noexport:
