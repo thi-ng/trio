@@ -4,28 +4,172 @@
 
 ** Highlevel query processing
 
+Triple stores not just provide high flexibility in terms of data
+organization and storage, but also for querying purposes. The query
+engine implemented in this namespace is conceptually based on [[http://www.w3.org/TR/sparql11-query][SPARQL]],
+however does not entail any RDF specifics or semantics. Datalog (as
+used by Datomic) too is similar in approach and both are essentially
+based on describing & matching patterns in a directed graph.
+
+*** Query engine features
+
+| *Feature*                         | *Status*   |
+|-----------------------------------+------------|
+| Query planning                    | INPROGRESS |
+| Query compilation                 | DONE       |
+| Subqueries                        | DONE       |
+| Multi-graph queries               | DONE       |
+| Filtering (per sub-query)         | DONE       |
+| Joins (fail fast)                 | DONE       |
+| Optional joins                    | DONE       |
+| Union                             | DONE       |
+| Subtraction                       | DONE       |
+| Arbitrary-length property paths   | INPROGRESS |
+| Result graph construction         | DONE       |
+| Result graph extraction           | DONE       |
+| Result var binding injection      | DONE       |
+| Result ordering on arbitrary vars | DONE       |
+| Result grouping                   | DONE       |
+
 *** Examples
+
+To introduce some of the query engine features, let's define a small graph of relationships:
+
+#+NAME: example-graph-table
+| *Subject* | *Predicate* | *Object* |
+|-----------+-------------+----------|
+| alice     | friend      | bob      |
+| alice     | age         | 34       |
+| bob       | friend      | carl     |
+| bob       | nick        | bobby    |
+| carl      | spouse      | alice    |
+| carl      | father      | donald   |
+| carl      | age         | 42       |
+| bob       | father      | emily    |
+| emily     | age         | 23       |
+| freya     | mother      | emily    |
+| emily     | nick        | em       |
+| donald    | friend      | emily    |
+
+#+BEGIN_SRC dot :noweb yes :file ../assets/query-example01.png :exports results
+  digraph G {
+    node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize="11"];
+    edge[fontname="Inconsolata",fontsize="9"];
+    <<lob-make-dot(graph-table=example-graph-table)>>
+  }
+#+END_SRC
+
+[[../assets/query-example01.png]]
+
+In Clojure this graph would be defined like this:
+
+#+BEGIN_SRC clojure
+  (require '[thi.ng.trio.core :refer :all])
+  (require '[thi.ng.trio.query :as q])
+
+  (def g
+    (->>
+     '[[alice   friend  bob]
+       [alice   age     34]
+       [bob     friend  carl]
+       [bob     nick    bobby]
+       [carl    spouse  alice]
+       [carl    father  donald]
+       [carl    age     42]
+       [bob     father  emily]
+       [emily   age     23]
+       [freya   mother  emily]
+       [emily   nick    em]
+       [donald  friend  emily]]
+     (apply plain-store)))
+#+END_SRC
+
+**** Selection
+
+Now let's query this graph to find some information about all parents & children:
+
+- perform alternative queries to bind =?p= to fathers or mothers of any child =?c=
+- optionally retrieve child's age =?a=
+- inject result var binding/mapper to format age as descriptive string
+- sort results by child name
 
 #+BEGIN_SRC clojure
   (q/query
    {:select :*
-    :from ds
-    :query [{:join '[[?gf father ?f]
-                     [?f father ?c]]}
-            {:optional '[[?gm mother ?f]]}
+    :from g
+    :query [{:where '[[?p father ?c]]}
+            {:union '[[?p mother ?c]]}
             {:optional '[[?c age ?a]]}]
-    :bind {'?a (fn [res a] (if a (str (res '?c) " is " a " years old")))}})
+    :bind {'?a (fn [res a] (if a (str (res '?c) " is " a " years old")))}
+    :order-asc '?c})
 
-  (q/query
-   {:construct '[[?gf grandfather ?c]
-                 [?gm grandmother ?c]]
-    :from ds
-    :query [{:join '[[?gf father ?f]
-                     [?gm mother ?f]
-                     [?f father ?c]]}]})
+  ;; => ({?p carl, ?c donald} {?a "emily is 23 years old", ?p freya, ?c emily} {?a "emily is 23 years old", ?p bob, ?c emily})
 #+END_SRC
 
-*** Query compiler
+**** Graph construction / inference
+
+Since we know Carl's spouse is Alice, but we don't have explicity
+stated her as Donald's mother, we could create a query that produces
+inferred facts based on these rules:
+
+1. for every =?f= father of =?c= and where =?m= spouse of =?f=, we declare =?m= mother of =?c=
+2. for every =?m= mother of =?c= and where =?f= spouse of =?m=, we declare =?f= father of =?c=
+3. for every =?f= father of =?c= and =?m= mother of =?c=, we declare =?f= spouse =?m= (and vice versa)
+4. declare a new =parent= relationship for each father/mother
+5. declare a new =child-of= relationship for each child
+
+In order to create these new facts we can use a =:construct= type query and we will also compile it first:
+
+#+BEGIN_SRC clojure
+  (def infer-parents
+    (q/compile-query
+     {:from g
+      :construct '[[?f spouse ?m] [?m spouse ?f] [?f father ?c] [?m mother ?c]
+                   [?f parent ?c] [?m parent ?c] [?c child-of ?f] [?c child-of ?m]]
+      :query [{:where '[[?f father ?c] [?f spouse ?m]]}
+              {:union '[[?m mother ?c] [?m spouse ?f]]}
+              {:union '[[?f father ?c] [?m mother ?c]]}]}))
+
+  (q/query infer-parents)
+
+  ;; => #{[freya spouse bob] [carl father donald] [freya mother emily] [alice mother donald]
+  ;;      [bob spouse freya] [carl spouse alice] [bob father emily] [alice spouse carl]}
+#+END_SRC
+
+Now we can add these inferred triples to our graph and test it:
+
+#+BEGIN_SRC clojure
+  (def g2 (add-bulk g (q/query infer-parents)))
+
+  (q/query {:select :* :from g2 :query [{:where '[[?p parent ?c]]}] :group '?c})
+
+  ;; => {emily [{?p bob, ?c emily} {?p freya, ?c emily}], donald [{?p carl, ?c donald} {?p alice, ?c donald}]}
+#+END_SRC
+
+The new graph with inferred triples marked in red:
+
+[[../assets/query-example02.png]]
+
+**** Subgraph extraction
+
+As a final introductory example, let's demonstrate how to extract
+anything we know subjects matched via an initial query/search, in this
+case people with nicknames and who are younger than 40. A =:describe=
+query returns all triples in which a bound result var is either a
+subject or object.
+
+#+BEGIN_SRC clojure
+  (q/query {:describe '?p :from g2 :query [{:where '[[?p nick ?n] [?p age ?a]] :filter {'?a #(< % 40)}}]})
+
+  ;; => #{[emily child-of bob] [emily child-of freya] [emily nick em] [emily age 23]
+  ;;      [donald friend emily] [freya mother emily] [freya parent emily] [bob parent emily] [bob father emily]}
+#+END_SRC
+
+The extracted sub-graph defined by the result triples (edges in red are the matched query terms):
+
+[[../assets/query-example03.png]]
+
+** Query compiler
 
 #+BEGIN_SRC clojure :noweb-ref processor
   (defn query-opts
@@ -186,12 +330,13 @@
         (let [res (qfn res)
               vars (select-keys (accumulate-result-vars res) describe)]
           (if (seq vars)
-            (mapcat
-             (fn [v]
-               (let [vals (vars v)
-                     vals (if (coll? vals) vals [vals])]
-                 (mapcat #(api/select from % nil nil) vals)))
-             (keys vars)))))))
+            (reduce
+             (fn [acc v]
+               (let [vals (vars v)]
+                 (-> acc
+                     (into (mapcat #(api/select from % nil nil) vals))
+                     (into (mapcat #(api/select from nil nil %) vals)))))
+             #{} (keys vars)))))))
 
   (defn compile-query
     [q]
@@ -390,7 +535,13 @@
 
   (defn compile-bind-fn
     [bindings]
-    (fn [res] (reduce-kv (fn [acc k f] (assoc acc k (f res (res k)))) res bindings)))
+    (fn [res]
+      (reduce-kv
+       (fn [acc k f]
+         (if-let [rv (f res (res k))]
+           (assoc acc k rv)
+           acc))
+       res bindings)))
 #+END_SRC
 
 *** Graphviz export

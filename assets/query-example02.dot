@@ -1,0 +1,32 @@
+digraph G {
+node[color="black",style="filled",fontname="Inconsolata",fontcolor="white"];
+edge[fontname="Inconsolata",fontsize="9"];
+
+"alice" -> "34" [label="age"];
+"alice" -> "bob" [label="friend"];
+"bob" -> "bobby" [label="nick"];
+"bob" -> "carl" [label="friend"];
+"bob" -> "emily" [label="father"];
+"carl" -> "42" [label="age"];
+"carl" -> "alice" [label="spouse"];
+"carl" -> "donald" [label="father"];
+"emily" -> "23" [label="age"];
+"emily" -> "em" [label="nick"];
+"freya" -> "bob" [label="spouse"];
+"freya" -> "emily" [label="mother"];
+"donald" -> "emily" [label="friend"];
+
+edge[fontname="Inconsolata",fontsize="9",color=red,fontcolor=red];
+"alice" -> "donald" [label="parent"];
+"bob" -> "emily" [label="parent"];
+"carl" -> "donald" [label="parent"];
+"freya" -> "emily" [label="parent"];
+"bob" -> "freya" [label="spouse"];
+"alice" -> "carl" [label="spouse"];
+"alice" -> "donald" [label="mother"];
+"donald" -> "alice" [label="child-of"];
+"donald" -> "carl" [label="child-of"];
+"emily" -> "bob" [label="child-of"];
+"emily" -> "freya" [label="child-of"];
+
+}
