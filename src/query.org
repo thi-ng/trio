@@ -215,27 +215,28 @@ function returns =nil=.
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn compile-filter-fn
     [filters]
-    (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))
+    (if filters
+      (if (fn? filters)
+        filters
+        (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))))
 
   (defn compile-bind-fn
     [bindings]
-    (fn [res]
-      (reduce-kv
-       (fn [acc k f]
-         (let [rv (f res (res k))]
-           (if (nil? rv) (assoc acc k rv) acc)))
-       res bindings)))
+    (if bindings
+      (if (fn? bindings)
+        bindings
+        (fn [res]
+          (reduce-kv
+           (fn [acc k f]
+             (let [rv (f res (res k))]
+               (if (nil? rv) (assoc acc k rv) acc)))
+           res bindings)))))
 
   (defn query-opts
-    [{:keys [filter bind]}]
-    {:filter (if filter
-               (if (fn? filter)
-                 filter
-                 (compile-filter-fn filter)))
-     :bind   (if bind
-               (if (fn? bind)
-                 bind
-                 (compile-bind-fn bind)))})
+    [opts]
+    (-> opts
+        (update-in [:filter] compile-filter-fn)
+        (update-in [:bind] compile-bind-fn)))
 #+END_SRC
 
 *** Compiler steps
@@ -354,9 +355,7 @@ The engine currently supports the following subquery types:
   (defmethod compile-query-step :bind
     [qfn bind _]
     (prn :bindings bind)
-    (let [bind (if (fn? bind)
-                 bind
-                 (compile-bind-fn bind))]
+    (let [bind (compile-bind-fn bind)]
       (fn [res] (map bind (qfn res)))))
 
   (defmethod compile-query-step :order-asc
@@ -471,9 +470,7 @@ The engine currently supports the following subquery types:
           agg?          (not (empty? avars))
           simple?       (not (empty? svars))
           catch-all?    (svars :*)
-          filter        (if having
-                          (if (fn? having) having (compile-filter-fn having))
-                          identity)
+          filter        (if having (compile-filter-fn having) identity)
           _   (prn :avars avars :svars svars)
           _   (when (and catch-all? (> (count qvars) 1))
                 (err/illegal-arg! (str "can't use :* selector with other vars: " qvars)))
@@ -965,22 +962,21 @@ query spec.
   (defn select-with-bindings
     [ds bindings opts [s p o :as t]]
     (let [patterns (produce-patterns-with-bound-vars t bindings)
-          _ (prn :patterns patterns)
-          vs? (qvar? s), vp? (qvar? p), vo? (qvar? o)
-          vmap (bind-translator vs? vp? vo? t)
-          pmap (unbound-vars-translator bindings vs? vp? vo? t)
-          verify (triple-verifier t vs? vp? vo?)
-          flt (opts :filter)
-          res-fn (if flt
-                   (let [flt (if (map? flt) (compile-filter-fn flt) flt)]
+          _        (prn :patterns patterns)
+          vs?      (qvar? s), vp? (qvar? p), vo? (qvar? o)
+          vmap     (bind-translator vs? vp? vo? t)
+          pmap     (unbound-vars-translator bindings vs? vp? vo? t)
+          verify   (triple-verifier t vs? vp? vo?)
+          flt      (compile-filter-fn (opts :filter))
+          res-fn   (if flt
                      #(if (verify %)
                         (let [vbinds (vmap %)]
-                          (if (flt vbinds) vbinds))))
-                   #(if (verify %) (vmap %)))]
+                          (if (flt vbinds) vbinds)))
+                     #(if (verify %) (vmap %)))]
       (loop [acc (transient []), ps patterns]
         (if ps
           (let [[qs qp qo] (pmap (vec (first ps)))
-                _ (prn :select qs qp qo)
+                _   (prn :select qs qp qo)
                 res (api/select ds qs qp qo)]
             (if (seq res)
               (recur
@@ -1002,8 +998,8 @@ query spec.
        (let [[p & ps] (sort-patterns patterns)
              res      (select-with-bindings ds bindings {} p)
              join-fn  (if opt? join-optional join)
-             flt      (if (map? flt)  (compile-filter-fn flt) flt)
-             bind     (if (map? bind) (compile-bind-fn bind) bind)]
+             flt      (compile-filter-fn flt)
+             bind     (compile-bind-fn bind)]
          (if (seq res)
            (loop [res res, ps ps]
              (if ps
