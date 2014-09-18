@@ -1,7 +1,7 @@
 digraph G {
-node[color="black",style="filled",fontname="Inconsolata",fontcolor="white"];
-edge[fontname="Inconsolata",fontsize="9"];
-
+ranksep=0.25;
+node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize=11];
+edge[fontname="Inconsolata",fontsize="9",align=center];
 "alice" -> "34" [label="age"];
 "alice" -> "bob" [label="friend"];
 "bob" -> "bobby" [label="nick"];
@@ -28,5 +28,8 @@ edge[fontname="Inconsolata",fontsize="9",color=red,fontcolor=red];
 "donald" -> "carl" [label="child-of"];
 "emily" -> "bob" [label="child-of"];
 "emily" -> "freya" [label="child-of"];
-
+"alice" -> "female" [label="gender"];
+"bob" -> "male" [label="gender"];
+"carl" -> "male" [label="gender"];
+"freya" -> "female" [label="gender"];
 }

@@ -1,15 +1,16 @@
 digraph G {
-node[color="black",style="filled",fontname="Inconsolata",fontcolor="white"];
+node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize=11];
 edge[fontname="Inconsolata",fontsize="9"];
 "emily" -> "bob" [label="child-of"];
-"emily" -> "freya" [label="child-of"];
 "donald" -> "emily" [label="friend"];
 "freya" -> "emily" [label="mother"];
-"freya" -> "emily" [label="parent"];
+"emily" -> "freya" [label="child-of"];
 "bob" -> "emily" [label="parent"];
 "bob" -> "emily" [label="father"];
+"freya" -> "emily" [label="parent"];
 
-edge[fontname="Inconsolata",fontsize="9",color=red,fontcolor=red];
-"emily" -> "em" [label="nick"];
+edge[fontname="Inconsolata",fontsize=9,color=red,fontcolor=red];
 "emily" -> "23" [label="age"];
+"emily" -> "em" [label="nick"];
+
 }
