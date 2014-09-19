@@ -146,8 +146,11 @@ In order to create these new facts we can use a =:construct= type query and we w
 
   (q/query infer-parents)
 
-  ;; => #{[freya spouse bob] [carl father donald] [freya mother emily] [alice mother donald]
-  ;;      [bob spouse freya] [carl spouse alice] [bob father emily] [alice spouse carl]}
+  ;; #{[freya spouse bob] [emily child-of bob] [carl parent donald] [bob gender male]
+  ;;   [alice parent donald] [carl father donald] [freya mother emily] [donald child-of alice]
+  ;;   [alice gender female] [alice mother donald] [bob spouse freya] [emily child-of freya]
+  ;;   [freya gender female] [bob parent emily] [carl spouse alice] [donald child-of carl]
+  ;;   [bob father emily] [alice spouse carl] [carl gender male] [freya parent emily]}
 #+END_SRC
 
 Now we can add these inferred triples to our graph and test it:
@@ -218,7 +221,7 @@ function returns =nil=.
     (if filters
       (if (fn? filters)
         filters
-        (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) true)) filters)))))
+        (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) false)) filters)))))
 
   (defn compile-bind-fn
     [bindings]
@@ -272,7 +275,9 @@ specs. An exception is thrown if there're compile errors.
       (err/unsupported! "Unsupported query type")))
 
   (defn query
-    [q] ((if (fn? q) q (compile-query q)) ::empty))
+    [q]
+    (let [res ((if (fn? q) q (compile-query q)) ::empty)]
+      (if (seq res) res)))
 #+END_SRC
 
 **** Sub queries
@@ -372,29 +377,78 @@ The engine currently supports the following subquery types:
 **** Result projection
 
 #+BEGIN_SRC clojure :noweb-ref compiler
+  (defn renamed-vars
+    [binding-map]
+    (reduce-kv
+     (fn [vars k v]
+       (if (and (map? v) (:as v))
+         (assoc vars (:as v) v)
+         (assoc vars k v)))
+     {} binding-map))
+
+  (defn selected-var-keys
+    [qvars key-fn]
+    (reduce
+     (fn [vars v]
+       (if (map? v)
+         (merge vars (key-fn v))
+         (assoc vars v v)))
+     {} qvars))
+
+  (defn parse-var-bind-spec
+    [v spec] (if (map? spec) [(or (:as spec) v) (:fn spec)] [v spec]))
+
+  (defn compute-select-bindings
+    [res svars]
+    (reduce-kv
+     (fn [acc v spec]
+       (let [[k f] (parse-var-bind-spec v spec)]
+         (assoc acc k (if (fn? f) (f (res v)) (res v)))))
+     {} svars))
+
+  (defn validate-selected-vars
+    [svars]
+    (if (svars :*)
+      (if (> (count svars) 1)
+        (err/illegal-arg! (str "can't use :* selector with other vars: " (vals svars)))
+        (dissoc svars :*))
+      svars))
+
   (defmethod compile-query-step :project-vars
     [qfn {:keys [select group] :as q} _]
     (prn :project-vars select)
     (if group
       (compile-query-step qfn q :project-aggregates)
-      (cond
-       (= :* select)        qfn
-       (sequential? select) (fn [res] (map #(select-keys % select) (qfn res)))
-       :else                (compile-query-step
-                             qfn (assoc q :select [select]) :project-vars))))
+      (let [select     (if (sequential? select) select [select])
+            svars      (selected-var-keys select identity)
+            catch-all? (svars :*)
+            svars      (validate-selected-vars svars)]
+        (if catch-all?
+          qfn
+          (fn [res] (map #(compute-select-bindings % svars) (qfn res)))))))
 #+END_SRC
 
 **** Result aggregates
 
 #+BEGIN_SRC clojure
-  ;; retrieve book prices, group by author, compute avg. price & filter by avg
   (defn avg [vals] (/ (apply + vals) (count vals)))
 
+  (def ds
+    (->> '[[a1 author b1]
+           [a1 author b2]
+           [a2 author b3]
+           [b1 price 10]
+           [b2 price 20]
+           [b3 price 5]]
+         (apply plain-store)))
+
+  ;; retrieve book prices, group by author, compute avg. price & group size per author, filter by avg.
   (q/query
-   {:select {'?p {:as '?avg :fn avg} '?a count}
+   {:select '[?b ?avg ?n]
     :from ds
     :query '[{:where [[?a author ?b] [?b price ?p]]}]
     :group '?a
+    :aggregate {'?p {:as '?avg :fn avg} '?n count}
     :having {'?avg #(> % 10)}})
 #+END_SRC
 
@@ -403,7 +457,7 @@ The engine currently supports the following subquery types:
     [vars vals]
     (reduce-kv
      (fn [inner v spec]
-       (let [[k f] (if (map? spec) [(:as spec) (:fn spec)] [v spec])]
+       (let [[k f] (parse-var-bind-spec v spec)]
          (assoc inner k (f (map #(get % v) vals)))))
      {} vars))
 
@@ -414,24 +468,26 @@ The engine currently supports the following subquery types:
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [aggregate (compute-aggregates vars vals)]
-                (if (filter aggregate)
-                  (assoc acc k aggregate)
+              (let [agg (compute-aggregates vars vals)]
+                (if (or (nil? filter) (filter agg))
+                  (assoc acc k agg)
                   acc)))
             {}))))
 
   (defmethod compile-query-step :project-aggregates-mixed
-    [qfn [avars svars flt] _]
-    (prn :mixed-aggregates avars svars flt)
+    [qfn [avars svars all? flt] _]
+    (prn :mixed-aggregates avars svars all? flt)
     (fn [res]
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [agg (compute-aggregates avars vals)
-                    vals (map #(merge (select-keys % svars) agg) vals)
-                    vals (filter flt vals)]
+              (let [agg  (compute-aggregates avars vals)
+                    vals (if all?
+                           (map #(merge % agg) vals)
+                           (map #(merge (compute-select-bindings % svars) agg) vals))
+                    vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
-                  (assoc acc k (filter flt vals))
+                  (assoc acc k vals)
                   acc)))
             {}))))
 
@@ -442,7 +498,8 @@ The engine currently supports the following subquery types:
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [vals (filter flt (mapv #(select-keys % vars) vals))]
+              (let [vals (map #(compute-select-bindings % vars) vals)
+                    vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
                   (assoc acc k vals)
                   acc)))
@@ -450,38 +507,35 @@ The engine currently supports the following subquery types:
 
   (defmethod compile-query-step :project-aggregates-all
     [qfn flt _]
-    (prn :all-aggregates filter)
+    (prn :all-aggregates flt)
     (fn [res]
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [vals (filter flt vals)]
+              (let [vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
-                  (assoc acc k (filter vals))
+                  (assoc acc k vals)
                   acc)))
             {}))))
 
   (defmethod compile-query-step :project-aggregates
-    [qfn {:keys [select group having] :as q} _]
-    (prn :group group)
-    (let [qvars         (if (sequential? select) select [select])
-          [avars svars] (d/bisect map? set qvars)
-          avars         (apply merge avars)
-          agg?          (not (empty? avars))
-          simple?       (not (empty? svars))
-          catch-all?    (svars :*)
-          filter        (if having (compile-filter-fn having) identity)
-          _   (prn :avars avars :svars svars)
-          _   (when (and catch-all? (> (count qvars) 1))
-                (err/illegal-arg! (str "can't use :* selector with other vars: " qvars)))
-          qfn (fn [res] (group-by group (qfn res)))]
-      (if agg?
-        (if simple?
-          (compile-query-step qfn [avars svars filter] :project-aggregates-mixed)
-          (compile-query-step qfn [avars filter] :project-aggregates-only))
-        (if-not catch-all?
-          (compile-query-step qfn [svars filter] :project-aggregates-simple)
-          (compile-query-step qfn filter :project-aggregates-all)))))
+    [qfn {:keys [select group aggregate having] :as q} _]
+    (prn :project-aggregates group aggregate)
+    (let [select     (if (sequential? select) select [select])
+          avars      (selected-var-keys select renamed-vars)
+          svars      (validate-selected-vars (selected-var-keys select identity))
+          catch-all? (avars :*)
+          agg-only?  (every? (set (keys (actual-vars aggregate))) (keys avars))
+          filter     (compile-filter-fn having)
+          qfn        (fn [res] (group-by group (qfn res)))]
+      (prn :svars svars :avars avars)
+      (if (seq aggregate)
+        (if (and agg-only? (not catch-all?))
+          (compile-query-step qfn [aggregate filter] :project-aggregates-only)
+          (compile-query-step qfn [aggregate svars catch-all? filter] :project-aggregates-mixed))
+        (if catch-all?
+          (compile-query-step qfn filter :project-aggregates-all)
+          (compile-query-step qfn [svars filter] :project-aggregates-simple)))))
 #+END_SRC
 
 **** Query type: SELECT
