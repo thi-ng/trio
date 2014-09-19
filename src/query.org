@@ -387,23 +387,25 @@ The engine currently supports the following subquery types:
      {} binding-map))
 
   (defn selected-var-keys
-    [qvars key-fn]
+    [qvars]
     (reduce
      (fn [vars v]
        (if (map? v)
-         (merge vars (key-fn v))
+         (merge vars v)
          (assoc vars v v)))
      {} qvars))
 
   (defn parse-var-bind-spec
-    [v spec] (if (map? spec) [(or (:as spec) v) (:fn spec)] [v spec]))
+    [v spec] (if (map? spec) [(or (:use spec) v) (:fn spec)] [nil spec]))
 
   (defn compute-select-bindings
     [res svars]
     (reduce-kv
      (fn [acc v spec]
        (let [[k f] (parse-var-bind-spec v spec)]
-         (assoc acc k (if (fn? f) (f (res v)) (res v)))))
+         (if k
+           (assoc acc v (if (fn? f) (f (res k)) (res k)))
+           (assoc acc v (f res)))))
      {} svars))
 
   (defn validate-selected-vars
@@ -420,7 +422,7 @@ The engine currently supports the following subquery types:
     (if group
       (compile-query-step qfn q :project-aggregates)
       (let [select     (if (sequential? select) select [select])
-            svars      (selected-var-keys select identity)
+            svars      (selected-var-keys select)
             catch-all? (svars :*)
             svars      (validate-selected-vars svars)]
         (if catch-all?
@@ -448,7 +450,7 @@ The engine currently supports the following subquery types:
     :from ds
     :query '[{:where [[?a author ?b] [?b price ?p]]}]
     :group '?a
-    :aggregate {'?p {:as '?avg :fn avg} '?n count}
+    :aggregate {'?avg {:use '?p :fn avg} '?n count}
     :having {'?avg #(> % 10)}})
 #+END_SRC
 
@@ -458,7 +460,9 @@ The engine currently supports the following subquery types:
     (reduce-kv
      (fn [inner v spec]
        (let [[k f] (parse-var-bind-spec v spec)]
-         (assoc inner k (f (map #(get % v) vals)))))
+         (if k
+           (assoc inner v (f (map #(get % k) vals)))
+           (assoc inner v (f vals)))))
      {} vars))
 
   (defmethod compile-query-step :project-aggregates-only
@@ -484,7 +488,7 @@ The engine currently supports the following subquery types:
               (let [agg  (compute-aggregates avars vals)
                     vals (if all?
                            (map #(merge % agg) vals)
-                           (map #(merge (compute-select-bindings % svars) agg) vals))
+                           (map #(compute-select-bindings (merge % agg) svars) vals))
                     vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
                   (assoc acc k vals)
@@ -522,13 +526,13 @@ The engine currently supports the following subquery types:
     [qfn {:keys [select group aggregate having] :as q} _]
     (prn :project-aggregates group aggregate)
     (let [select     (if (sequential? select) select [select])
-          avars      (selected-var-keys select renamed-vars)
-          svars      (validate-selected-vars (selected-var-keys select identity))
-          catch-all? (avars :*)
-          agg-only?  (every? (set (keys (actual-vars aggregate))) (keys avars))
+          svars      (selected-var-keys select)
+          catch-all? (svars :*)
+          svars      (validate-selected-vars svars)
+          agg-only?  (every? (set (keys (actual-vars aggregate))) (keys svars))
           filter     (compile-filter-fn having)
           qfn        (fn [res] (group-by group (qfn res)))]
-      (prn :svars svars :avars avars)
+      (prn :svars svars)
       (if (seq aggregate)
         (if (and agg-only? (not catch-all?))
           (compile-query-step qfn [aggregate filter] :project-aggregates-only)
