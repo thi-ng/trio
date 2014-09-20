@@ -9,6 +9,17 @@ at once.
 
 ** Protocol definitions
 
+*** PModelConvert
+
+This protocol is used to easily convert Clojure collections into an
+triplestore and so allow the query engine to operate directly on these
+collections.
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModelConvert
+   (as-model [_]))
+#+END_SRC
+
 *** PModel
 
 #+BEGIN_SRC clojure :noweb-ref protos
@@ -608,13 +619,13 @@ Some use cases require support for aliased resources stored in
 triples. For example in RDF resources can be explicitly declared as
 equal via an =owl:sameAs= relationship.
 
-The =AliasStore= defined below achieves this goal by wrapping an
+The =AliasMemoryStore= defined below achieves this goal by wrapping an
 existing triplestore and combines it with an Union Find index to allow
 registration of aliases and queries using them.
 
 Union Find is based on the concept of disjoint sets of connected
 components. For each component (set) a single canonical value is
-chosen. In the case of the =AliasStore= this means any triples
+chosen. In the case of the =AliasMemoryStore= this means any triples
 containing aliased values will be rewritten to contain only canonical
 values. This happens with already existing triples and newly added
 ones. Aliases can be defined and removed at any time, although it's
@@ -622,14 +633,14 @@ more efficient to declare aliases before inserting new statements to
 avoid major rewrite operations.
 
 #+BEGIN_SRC clojure :noweb-ref alias-store
-  (defrecord AliasStore [store aliases]
+  (defrecord AliasMemoryStore [store aliases]
     PStatementAccess
     (add-statement
       [_ [s p o]]
       (let [t [(or (u/canonical aliases s) s)
                (or (u/canonical aliases p) p)
                (or (u/canonical aliases o) o)]]
-        (AliasStore. (add-statement store t) aliases)))
+        (AliasMemoryStore. (add-statement store t) aliases)))
     (add-bulk
       [_ statements]
       (loop [store store, xs statements]
@@ -639,7 +650,7 @@ avoid major rewrite operations.
                    (or (u/canonical aliases p) p)
                    (or (u/canonical aliases o) o)]]
             (recur (add-statement store t) (next xs)))
-          (AliasStore. store aliases))))
+          (AliasMemoryStore. store aliases))))
 
     PModel
     (select
@@ -656,15 +667,15 @@ avoid major rewrite operations.
     (canonical? [_ p] (u/canonical? aliases p))
     (component [_ p] (u/component aliases p))
     (disjoint-components [_] (u/disjoint-components aliases))
-    (register [_ p] (AliasStore. store (u/register aliases p)))
+    (register [_ p] (AliasMemoryStore. store (u/register aliases p)))
     (unregister
       [_ p]
       (if (u/canonical? aliases p)
         (let [q (first (disj (u/component aliases p) p))
               aliases (u/unregister aliases p)
               store (if q (rewrite-alias store p q) store)]
-          (AliasStore. store aliases))
-        (AliasStore. store (u/unregister aliases p))))
+          (AliasMemoryStore. store aliases))
+        (AliasMemoryStore. store (u/unregister aliases p))))
     (unified? [_ p q] (u/unified? aliases p q))
     (union
       [_ p q]
@@ -674,7 +685,7 @@ avoid major rewrite operations.
               store (if (= p canon)
                       (rewrite-alias store q canon)
                       (rewrite-alias store p canon))]
-          (AliasStore. store aliases))
+          (AliasMemoryStore. store aliases))
         (err/illegal-arg! (str "aliases must be both non-nil values: " [p q])))))
 #+END_SRC
 *** Triple graph (WIP)
@@ -801,7 +812,7 @@ joins...
 
   (defn alias-store
     [store aliases & triples]
-    (add-bulk (reduce (partial apply u/union) (AliasStore. store (u/disjoint-set)) aliases) triples))
+    (add-bulk (reduce (partial apply u/union) (AliasMemoryStore. store (u/disjoint-set)) aliases) triples))
 #+END_SRC
 
 ** Multi-store dataset
@@ -871,6 +882,92 @@ joins...
     (PlainDataset. (assoc models :default (plain-store))))
 #+END_SRC
 
+** Clojure collection conversion
+
+Using the =PModelConvert= protocol defined above, we can provide a
+mechanism to automatically convert Clojure collections into a
+triplestore. Of course, such an approach will involve some assumptions
+about the internal structure of these collections, but the
+implementations below are quite flexible and allow for very succinct
+definitions of graph structures by specifying shared subjects,
+predicates or objects within a given triple pattern.
+
+*** Sequential collections
+
+#+BEGIN_SRC clojure
+  (as-model
+   '[[s p o]                     ;; => [s p o]
+     [s p [o1 o2]]               ;; => [s p o1] [s p o2]
+     [s [p1 p2] o]               ;; => [s p1 o] [s p2 o]
+     [s [p1 p2] [o1 o2]]         ;; => [s p1 o1] [s p2 o1] [s p1 o2] [s p2 o2]
+     [[s1 s2] p o]               ;; => [s1 p o] [s2 p o]
+     [[s1 s2] [p1 p2] o]         ;; => [s1 p1 o] [s1 p2 o] [s2 p1 o] [s2 p2 o]
+     [[s1 s2] [p1 p2] [o1 o2]]]) ;; => [s1 p1 o1] [s1 p2 o2] [s2 p1 o1] ...
+#+END_SRC
+
+For sequential collections defined in a format shown above, we can
+compute the cartesian product of each individual pattern to produce a
+flat sequence of triples.
+
+#+BEGIN_SRC clojure :noweb-ref convert
+  (defn triple-seq-sequential
+   [coll]
+   (mapcat
+    (fn [triple]
+      (->> triple
+           (map #(if (sequential? %) % [%]))
+           (apply d/cartesian-product)))
+    coll))
+#+END_SRC
+
+*** Maps
+
+To convert maps into a flat sequence of triples, the converter assumes
+the following data layout. Unlike with sequences, which allow multiple
+subjects, predicates and objects per pattern, for maps we can only
+support multiple object values for a given pair of subject/predicate:
+
+#+BEGIN_SRC clojure
+  (as-model
+   {:s1 {:p1 [:s2 :s3 :s4] :p2 23}
+    :s2 {:p2 "foo"}
+    :s3 {:p3 :s1}})
+
+  ;; => [[:s1 :p1 :s2] [:s1 :p1 :s3] [:s1 :p1 :s4] [:s1 :p2 23] ...]
+#+END_SRC
+
+The map converter then simply flattens each SP tuple:
+
+#+BEGIN_SRC clojure :noweb-ref convert
+  (defn triple-seq-associative
+    [coll]
+    (mapcat
+     (fn [[s v]]
+       (mapcat
+        (fn [[p o]]
+          (if (coll? o)
+            (map (fn [o] [s p o]) o)
+            [[s p o]]))
+        v))
+     coll))
+#+END_SRC
+
+*** Protocol implementations
+
+#+BEGIN_SRC clojure :noweb-ref convert
+  (extend-protocol PModelConvert
+
+    ,#+clj  clojure.lang.Sequential
+    ,#+cljs ISequential
+    (as-model [_] (apply plain-store (triple-seq-sequential _)))
+
+    ,#+clj  clojure.lang.IPersistentMap
+    ,#+cljs IMap
+    (as-model [_] (apply plain-store (triple-seq-associative _)))
+    
+    )
+#+END_SRC
+
 ** Complete namespace definition
 
 #+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/core.cljx :noweb yes :mkdirp yes :padline no
@@ -898,4 +995,6 @@ joins...
   <<dataset>>
 
   <<ctors>>
+
+  <<convert>>
 #+END_SRC
