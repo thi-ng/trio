@@ -73,7 +73,7 @@ To introduce some of the query engine features, let's define a small graph of re
 [[../assets/query-example01.png]]
 
 In Clojure this graph could be defined like this (using a hashmap is
-just one option, see [[file:core.org::*Clojure collection conversion][Clojure collection conversion]]):
+just one option, see [[file:core.org][Clojure collection conversion in core ns]]):
 
 #+BEGIN_SRC clojure
   (require '[thi.ng.trio.core :refer :all])
@@ -113,9 +113,12 @@ Let's query this graph to find some information about all parents & children:
 
 **** Graph construction / inference
 
-Since we know Carl's spouse is Alice, but we don't have explicity
-stated her as Donald's mother, we could create a query that produces a
-number of inferred facts based on these following rules:
+We know Carl's spouse is Alice, but we don't have explicity stated her
+as Donald's mother and therefore she didn't appear in the results.
+However, we could create a =:construct= query that produces a number
+of inferred facts based on the following rules (of course these
+wouldn't stand up in the real world, but let's ignore that point on
+this occasion):
 
 1. for every =?f= father of =?c= and where =?m= spouse of =?f=, we declare =?m= mother of =?c=
 2. for every =?m= mother of =?c= and where =?f= spouse of =?m=, we declare =?f= father of =?c=
