@@ -1,0 +1,12 @@
+digraph G {
+node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize=11];
+edge[fontname="Inconsolata",fontsize=9];
+"b3" -> "5" [label="price"];
+"b4" -> "20" [label="price"];
+"b2" -> "20" [label="price"];
+"b1" -> "10" [label="price"];
+"a3" -> "b4" [label="author"];
+"a2" -> "b3" [label="author"];
+"a1" -> "b2" [label="author"];
+"a1" -> "b1" [label="author"];
+}

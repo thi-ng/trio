@@ -20,18 +20,19 @@ describing & matching patterns in a directed graph.
 | Query compilation                 | DONE       |
 | Subqueries                        | DONE       |
 | Multi-graph queries               | DONE       |
+| Direct query of clj triple seqs   | DONE       |
 | Filtering (per sub-query)         | DONE       |
 | Joins (fail fast)                 | DONE       |
 | Optional joins                    | DONE       |
 | Union (match alternatives)        | DONE       |
 | Subtraction (negation)            | DONE       |
 | Arbitrary-length paths queries    | INPROGRESS |
-| Result graph construction         | DONE       |
-| Result graph extraction           | DONE       |
+| Result graph construction         | INPROGRESS |
+| Result graph extraction           | INPROGRESS |
 | Result var binding injection      | DONE       |
 | Result ordering on arbitrary vars | DONE       |
 | Result grouping                   | DONE       |
-| Result aggregates                 | INPROGRESS |
+| Result aggregate expressions      | INPROGRESS |
 | Aggregate filters                 | INPROGRESS |
 
 More generally, the engine design was guided by:
@@ -343,7 +344,13 @@ The engine currently supports the following subquery types:
     (loop [qfn qfn, query query]
       (if query
         (let [q (first query)
-              q (if (:from q) q (assoc q :from from))
+              from (or (:from q) from)
+              q (cond
+                 (satisfies? api/PModel from)
+                 (assoc q :from from)
+
+                 (satisfies? api/PModelConvert from)
+                 (assoc q :from (api/as-model from)))
               q (if (:with q) q (assoc q :with (or with {})))
               qfn (cond
                    (:where q)    (compile-query-step qfn q :join)
@@ -432,26 +439,42 @@ The engine currently supports the following subquery types:
 
 **** Result aggregates
 
+The following example graph maps authors to their books & prices. We
+will query this graph using grouping and compute some aggregate stats
+for each author:
+
 #+BEGIN_SRC clojure
-  (defn avg [vals] (/ (apply + vals) (count vals)))
+  (defn avg [vals] (/ (reduce + vals) (count vals)))
+  (defn max' [vals] (reduce max vals))
 
   (def ds
-    (->> '[[a1 author b1]
-           [a1 author b2]
-           [a2 author b3]
-           [b1 price 10]
-           [b2 price 20]
-           [b3 price 5]]
-         (apply plain-store)))
+    (as-model
+     '[[a1 author [b1 b2]]
+       [a2 author b3]
+       [a3 author b4]
+       [b1 price 10]
+       [[b2 b4] price 20]
+       [b3 price 5]]))
+#+END_SRC
 
-  ;; retrieve book prices, group by author, compute avg. price & group size per author, filter by avg.
+[[../assets/aggregates.png]]
+
+#+BEGIN_SRC clojure
+  ;; retrieve book prices, group by author
+  ;; compute avg. & max price, group size per author
+  ;; filter by avg.
+
   (q/query
-   {:select '[?b ?avg ?n]
+   {:select '[?avg ?max ?num]
     :from ds
     :query '[{:where [[?a author ?b] [?b price ?p]]}]
     :group '?a
-    :aggregate {'?avg {:use '?p :fn avg} '?n count}
+    :aggregate {'?avg {:use '?p :fn avg}
+                '?max {:use '?p :fn max'}
+                '?num count}
     :having {'?avg #(> % 10)}})
+
+  ;; => {a3 {?avg 20, ?max 20, ?num 1}, a1 {?avg 15, ?max 20, ?num 2}}
 #+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref compiler
@@ -466,15 +489,15 @@ The engine currently supports the following subquery types:
      {} vars))
 
   (defmethod compile-query-step :project-aggregates-only
-    [qfn [vars filter] _]
-    (prn :aggregates-only vars filter)
+    [qfn [avars svars filter] _]
+    (prn :aggregates-only avars filter)
     (fn [res]
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [agg (compute-aggregates vars vals)]
+              (let [agg (compute-aggregates avars vals)]
                 (if (or (nil? filter) (filter agg))
-                  (assoc acc k agg)
+                  (assoc acc k (compute-select-bindings agg svars))
                   acc)))
             {}))))
 
@@ -486,12 +509,12 @@ The engine currently supports the following subquery types:
            (reduce-kv
             (fn [acc k vals]
               (let [agg  (compute-aggregates avars vals)
-                    vals (if all?
-                           (map #(merge % agg) vals)
-                           (map #(compute-select-bindings (merge % agg) svars) vals))
+                    vals (map #(merge % agg) vals)
                     vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
-                  (assoc acc k vals)
+                  (if all?
+                    (assoc acc k vals)
+                    (assoc acc k (map #(compute-select-bindings % svars) vals)))
                   acc)))
             {}))))
 
@@ -502,10 +525,9 @@ The engine currently supports the following subquery types:
       (->> (qfn res)
            (reduce-kv
             (fn [acc k vals]
-              (let [vals (map #(compute-select-bindings % vars) vals)
-                    vals (if flt (filter flt vals) vals)]
+              (let [vals (if flt (filter flt vals) vals)]
                 (if (seq vals)
-                  (assoc acc k vals)
+                  (assoc acc k (map #(compute-select-bindings % vars) vals))
                   acc)))
             {}))))
 
@@ -529,13 +551,13 @@ The engine currently supports the following subquery types:
           svars      (selected-var-keys select)
           catch-all? (svars :*)
           svars      (validate-selected-vars svars)
-          agg-only?  (every? (set (keys (actual-vars aggregate))) (keys svars))
+          agg-only?  (every? (set (keys aggregate)) (keys svars))
           filter     (compile-filter-fn having)
           qfn        (fn [res] (group-by group (qfn res)))]
       (prn :svars svars)
       (if (seq aggregate)
         (if (and agg-only? (not catch-all?))
-          (compile-query-step qfn [aggregate filter] :project-aggregates-only)
+          (compile-query-step qfn [aggregate svars filter] :project-aggregates-only)
           (compile-query-step qfn [aggregate svars catch-all? filter] :project-aggregates-mixed))
         (if catch-all?
           (compile-query-step qfn filter :project-aggregates-all)
