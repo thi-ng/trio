@@ -185,14 +185,27 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 [[../assets/query-example03.png]]
 
 ** Query compiler
+
+The role of the query compiler is to analyze and translate query specs
+(plain hashmaps) into actual working code, as well as to reduce
+pre-processing and optimize code paths for repetive queries.
+
+As shown in the above examples, the query engine supports several
+query types, all of which are described in further detail below.
+Common to all query types is the concept of using one or more
+subqueries (each of which describes one or more graph patterns with
+variables to be matched), and define a number of set operations how
+each individual result set is to be merged to produce the final
+solutions.
+
 # <<queryopts>>
 *** Query options (filters, var injection)
 
 Each subquery can define its own filters & variable injections. These
 query options are passed via the =:filter= and =:bind= keys. Both
-assume a function which is applied to each result binding map.
-However, for most use cases it is more convenient to specify these
-functions for individual query vars only and the following helpers
+assume a function which is applied to each unique result binding map.
+However, for most use cases it is more convenient to only specify these
+functions for individual query vars and the following helpers
 allow us to do so.
 
 For example this sub-query asks for artists under 25 and injects a new
@@ -205,8 +218,9 @@ qvar =?fullname= into each result:
 #+END_SRC
 
 If specified in this manner (as map with qvars as keys), =:filter=
-functions must accept a single arg, i.e. the value of the qvar
-binding. Any truthy return value will keep the result.
+functions must accept a single arg, i.e. the value of the qvar binding
+to check. Any truthy return value will keep the result in the set of
+solutions.
 
 On the other hand, =:bind= fns must accept 2 args: the full
 result map and the related qvar's value. The return value will be
@@ -215,13 +229,31 @@ function returns =nil=.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn compile-filter-fn
+    "Takes a map of qvar bindings as keys and filter fns as values.
+    Returns fn which accepts a single result map and returns true if all
+    given filter fns succeed. Filter fns must accept a single arg, i.e.
+    the qvar's value in the result map. Filter fns are only called if
+    the qvar is bound. If a filter is defined for a qvar which does not
+    ever appear in a solution, the related query will produce no
+    results."
     [filters]
     (if filters
       (if (fn? filters)
         filters
-        (fn [res] (every? (fn [[k f]] (if-let [rv (res k)] (f rv) false)) filters)))))
+        (fn [res]
+          (every?
+           (fn [[k f]] (let [rv (res k)] (if-not (nil? rv) (f rv) false)))
+           filters)))))
 
   (defn compile-bind-fn
+    "Takes a map of qvar bindings as keys and bind fns as values.
+    Returns a fn which accepts a single result map and returns updated
+    map with injected/updated qvars. Bind fns must accept two args: the
+    full result map and the value of the fn's associated qvars. The fn's
+    return value is used as new binding for the qvar unless nil. Bind
+    fns are called regardless if qvar is currently bound (non-nil). This
+    is in order to allow for the injection of new vars into the
+    solution."
     [bindings]
     (if bindings
       (if (fn? bindings)
@@ -242,11 +274,9 @@ function returns =nil=.
 
 *** Compiler steps
 
-The role of the query compiler is to translate query specs (plain
-hashmaps) into actual working code, as well as to reduce
-pre-processing for repetive queries. This compilation is realized via
-the =compile-query-step= multimethod in order to cleanly separate
-logic for each query element and keep the code legible.
+Query compilation is realized via the =compile-query-step= multimethod
+in order to cleanly separate logic for each query element and keep the
+code legible.
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmulti compile-query-step
