@@ -892,40 +892,13 @@ implementations below are quite flexible and allow for very succinct
 definitions of graph structures by specifying shared subjects,
 predicates or objects within a given triple pattern.
 
-*** Sequential collections
-
-#+BEGIN_SRC clojure
-  (as-model
-   '[[s p o]                     ;; => [s p o]
-     [s p [o1 o2]]               ;; => [s p o1] [s p o2]
-     [s [p1 p2] o]               ;; => [s p1 o] [s p2 o]
-     [s [p1 p2] [o1 o2]]         ;; => [s p1 o1] [s p2 o1] [s p1 o2] [s p2 o2]
-     [[s1 s2] p o]               ;; => [s1 p o] [s2 p o]
-     [[s1 s2] [p1 p2] o]         ;; => [s1 p1 o] [s1 p2 o] [s2 p1 o] [s2 p2 o]
-     [[s1 s2] [p1 p2] [o1 o2]]]) ;; => [s1 p1 o1] [s1 p2 o2] [s2 p1 o1] ...
-#+END_SRC
-
-For sequential collections defined in a format shown above, we can
-compute the cartesian product of each individual pattern to produce a
-flat sequence of triples.
-
-#+BEGIN_SRC clojure :noweb-ref convert
-  (defn triple-seq-sequential
-   [coll]
-   (mapcat
-    (fn [triple]
-      (->> triple
-           (map #(if (sequential? %) % [%]))
-           (apply d/cartesian-product)))
-    coll))
-#+END_SRC
-
 *** Maps
 
 To convert maps into a flat sequence of triples, the converter assumes
-the following data layout. Unlike with sequences, which allow multiple
-subjects, predicates and objects per pattern, for maps we can only
-support multiple object values for a given pair of subject/predicate:
+the data layout shown below. Unlike with sequences (discussed next),
+which allow multiple subjects, predicates or objects per pattern, for
+maps we can only support multiple object values for a given pair of
+subject/predicate:
 
 #+BEGIN_SRC clojure
   (as-model
@@ -940,16 +913,60 @@ The map converter then simply flattens each SP tuple:
 
 #+BEGIN_SRC clojure :noweb-ref convert
   (defn triple-seq-associative
+    "Converts a single nested map into a seq of triples.
+    Each key must have another map as value. Toplevel keys become
+    subjects, value map keys predicates, inner map values objects. Each
+    predicate key can define a seq of values to produce multiple
+    triples."
     [coll]
     (mapcat
      (fn [[s v]]
        (mapcat
         (fn [[p o]]
           (if (coll? o)
-            (map (fn [o] [s p o]) o)
+            (mapv (fn [o] [s p o]) o)
             [[s p o]]))
         v))
      coll))
+#+END_SRC
+
+*** Sequential collections
+
+Clojure sequences offer more flexibility than maps to encode graph
+structures and furthermore can contain maps themselves. The
+conversion supports any mixture of formats shown below by computing
+the cartesian product of each individual pattern to produce a flat
+sequence of triples. If a sequence item is a map, it will be converted
+with the =triple-seq-associative= fn.
+
+#+BEGIN_SRC clojure
+  (as-model
+   '[[s p o]                     ;; => [s p o]
+     [s p [o1 o2]]               ;; => [s p o1] [s p o2]
+     [s [p1 p2] o]               ;; => [s p1 o] [s p2 o]
+     [s [p1 p2] [o1 o2]]         ;; => [s p1 o1] [s p2 o1] [s p1 o2] [s p2 o2]
+     [[s1 s2] p o]               ;; => [s1 p o] [s2 p o]
+     [[s1 s2] [p1 p2] o]         ;; => [s1 p1 o] [s1 p2 o] [s2 p1 o] [s2 p2 o]
+     [[s1 s2] [p1 p2] [o1 o2]]]) ;; => [s1 p1 o1] [s1 p2 o2] [s2 p1 o1] ...
+
+  (as-model
+   '[{s1 {p1 [o1 o2]}            ;; => [s1 p1 o1] [s1 p1 o2]
+      s2 {p1 [o3 o4]}}           ;; => [s2 p1 o3] [s2 p1 o4]
+     {s1 {p2 o1, p3 o5}}])       ;; => [s1 p2 o1] [s1 p3 o5]
+#+END_SRC
+
+#+BEGIN_SRC clojure :noweb-ref convert
+  (defn triple-seq-sequential
+
+   [coll]
+   (mapcat
+    (fn [triple]
+      (if (map? triple)
+        (triple-seq-associative triple)
+        (->> triple
+             (map #(if (sequential? %) % [%]))
+             (apply d/cartesian-product))))
+    coll))
 #+END_SRC
 
 *** Protocol implementations
