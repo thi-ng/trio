@@ -1,15 +1,17 @@
 # thi.ng/trio
 
-![Example graph](assets/counselor.png)
+![Example graph](assets/multigraph.png)
 
 Simple, yet extensible and datatype agnostic
-[triple store](http://en.wikipedia.org/wiki/Triplestore) API &
-[SPARQL](http://en.wikipedia.org/wiki/SPARQL)-like query engine for
-Clojure/ClojureScript.
+[triple store](http://en.wikipedia.org/wiki/Triplestore) API and
+powerful [SPARQL](http://en.wikipedia.org/wiki/SPARQL)-like query
+engine for Clojure/ClojureScript.
 
 ## Description & usage
 
-See [index.org](src/index.org)
+- [Project overview & dependencies](src/index.org)
+- [Query engine & examples](src/query.org)
+- [Triple stores](src/core.org)
 
 ## License
 

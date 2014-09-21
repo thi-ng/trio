@@ -3,26 +3,25 @@
 
 * About the project
 
-** TODO Overview
+** Overview
 
 This project provides a simple, yet extensible and datatype agnostic
-[[http://en.wikipedia.org/wiki/Triplestore][triple store]] API & [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for Clojure/ClojureScript.
-This library is the result of extracting & refactoring non-RDF related
-functionality from the upcoming thi.ng/sema toolkit and make the
-underlying graph tools more accessible to a wider audience.
+[[http://en.wikipedia.org/wiki/Triplestore][triple store]] API and powerful [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for
+Clojure/ClojureScript. This library is the result of extracting &
+refactoring non-RDF related functionality from the upcoming
+*thi.ng/sema* toolkit and so making the underlying graph tools more
+accessible to a wider audience. The library is developed in a literal
+programming format and contains many examples and extensive
+documentation for all parts.
 
 Triple stores are usually associated with [[http://en.wikipedia.org/wiki/Semantic_web][Semantic Web]] & [[http://en.wikipedia.org/wiki/Linked_Data][Linked Data]]
-applications, however encoding graphs as triples (or quads) is natural
-too for a large number of other use cases and this library is aiming
-to address some of these. Altough currently only an in-memory store is
+applications, however encoding data as triples is natural & useful too
+for a large number of other use cases and this library is aiming to
+address some of these. Altough currently only an in-memory store is
 available, the intention is to have a pluggable storage layer (a bit
 like Datomic). Some prototype implementations for Redis, CouchDB &
 Cassandra have been in development since last year (but currently
 stalled due to other priorities).
-
-The query engine too is far more fully featured than what the example
-below's letting on and more demos will be added in due course...
-
 
 ** Status
 
@@ -30,129 +29,8 @@ ALPHA quality, subject to frequent changes until further notice.
 
 ** Example usage
 
-#+BEGIN_SRC clojure
-  (require
-   '[thi.ng.trio.core :refer :all]
-   '[thi.ng.trio.query2 :as q])
-#+END_SRC
-
-[[../assets/counselor.png]]
-
-The graph above shows some character relationships from the film
-"The Counselor", written by Cormac McCarthy & directed by Ridley Scott.
-The code below is encoding & analyzing these relationships.
-
-#+BEGIN_SRC clojure
-  ;; ds will hold a plain triple store which accepts any datatype
-  ;; for its subjects, predicates & objects
-
-  ;; this API layer does NOT impose any RDF semantics or similar...
-  ;; these will be dealt with in the still unreleased thi.ng/sema library
-
-  (def ds
-    (add-bulk
-     (plain-store)
-     '[[reiner       loves     malkina]
-       [laura        loves     counselor]
-       [counselor    loves     laura]
-       [westray      friend-of reiner]
-       [westray      killed-by wireman2]
-       [counselor    friend-of reiner]
-       [reiner       killed-by cartel]
-       [wireman      works-for malkina]
-       [wireman2     works-for malkina]
-       [green-hornet killed-by wireman]
-       [green-hornet works-for jefe]
-       [jefe         works-for cartel]
-       [laura        killed-by cartel]
-       [wireman      killed-by cartel]]))
-
-  ;; export the triples as dot file for graphviz
-  ;; the file can then be visualized from the command line via:
-  ;; `dot -Tpng -o counselor.png counselor.dot`
-  (spit "counselor.dot" (q/triples->dot (select ds)))
-
-  ;; all subjects
-  (subjects ds)
-  ;; (jefe green-hornet wireman2 wireman counselor westray laura reiner)
-
-  ;; all relations
-  (predicates ds)
-  ;; (works-for killed-by friend-of loves)
-
-  ;; show all triples...
-  (select ds)
-  ;; ([jefe works-for cartel]
-  ;;  [green-hornet works-for jefe]
-  ;;  [green-hornet killed-by wireman]
-  ;;  [wireman2 works-for malkina]
-  ;;  [wireman killed-by cartel]
-  ;;  [wireman works-for malkina]
-  ;;  [counselor friend-of reiner]
-  ;;  [westray killed-by wireman2]
-  ;;  [westray friend-of reiner]
-  ;;  [councelor loves laura]
-  ;;  [laura killed-by cartel]
-  ;;  [laura loves counselor]
-  ;;  [reiner killed-by cartel]
-  ;;  [reiner loves malkina])
-
-
-  ;; find all triples of characters in love
-  (select ds nil 'loves nil)
-  ;; ([counselor loves laura] [laura loves counselor] [reiner loves malkina])
-
-
-  ;; all we know about malkina in object position
-  (select ds nil nil 'malkina)
-  ;; ([wireman2 works-for malkina] [wireman works-for malkina] [reiner loves malkina])
-
-
-  ;; all cartel victims
-  (select ds nil 'killed-by 'cartel)
-  ;; ([laura killed-by cartel] [reiner killed-by cartel] [wireman killed-by cartel])
-
-
-  ;; now let's use query engine & bind some query variable(s)
-  (q/select-with-bindings ds '[?victim killed-by cartel])
-  ;; ({?victim laura} {?victim reiner} {?victim wireman})
-
-
-  ;; is malkina a murderer?
-  (q/select-with-bindings ds '[?v killed-by malkina])
-  ;; nil
-
-
-  ;; ...doesn't look like it, but maybe she employed someone to do dirty
-  ;; work for her?
-  (q/select-join ds '[[?v killed-by ?m] [?m works-for malkina]])
-  ;; ({?v westray, ?m wireman2} {?v green-hornet, ?m wireman})
-
-
-  ;; ...bingo, we could also have written this as a property path query
-  (q/select-transitive ds '[?v [killed-by works-for] ?m])
-  ;; ({?m malkina, ?v green-hornet, ?___q9910 wireman}
-  ;;  {?m malkina, ?v westray, ?___q9910 wireman2})
-
-
-  ;; let's also see who's the lover of the criminal, check if he/she died too
-  ;; and if victim & lover had any link to each other?
-  (->> '[[?victim [killed-by works-for] ?m]
-         [?lover loves ?m]
-         [?lover killed-by ?m2]
-         [?victim ?rel ?lover]]
-       (q/resolve-patterns)
-       (q/select-join ds)
-       (map
-        (fn [{:syms [?victim ?lover ?rel ?m ?m2]}]
-          (str
-           ?victim " was killed on behalf of " ?m ". "
-           "the killer's lover, " ?lover ", was killed in turn by " ?m2 ". "
-           ?lover " was a " ?rel " " ?victim))))
-  ;; ("westray was killed by malkina.
-  ;;   the killer's lover, reiner, was killed in turn by cartel.
-  ;;   reiner was a friend-of westray")
-#+END_SRC
+The [[file:query.org][query engine namespace]] is currently the best source of information
+and concrete usage examples. Please take a look!
 
 ** License
 

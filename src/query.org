@@ -216,7 +216,7 @@ errors.
 
 The role of the query compiler is to analyze and translate query specs
 (plain hashmaps) into actual working code, as well as to reduce
-pre-processing and optimize code paths for repetive queries.
+pre-processing and optimize code paths for repetitive queries.
 
 As shown in the above examples, the query engine supports several
 query types, all of which are described in further detail below.
@@ -738,7 +738,7 @@ solutions. Each solution is a map of unique qvar bindings.
 *Use cases:*
 - General graph queries / pattern matching
 - Result transformations
-- 
+
 | *Key*       | *Value(s)*                | *Description*                                                      | *Required* |
 |-------------+---------------------------+--------------------------------------------------------------------+------------|
 | :select     | :*                        | Solutions contain all used qvars                                   | yes        |

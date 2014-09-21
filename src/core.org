@@ -13,7 +13,8 @@ at once.
 
 This protocol is used to easily convert Clojure collections into an
 triplestore and so allow the query engine to operate directly on these
-collections.
+collections. Implementations are provided for sequences & maps further
+below.
 
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PModelConvert
