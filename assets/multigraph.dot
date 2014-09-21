@@ -1,0 +1,54 @@
+digraph G {
+  size="6,8"
+  ratio=fill;
+  rankdir=LR;
+  ranksep=0.1;
+node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize=11];
+edge[fontname="Inconsolata",fontsize="9"];
+"nyc" -> "8400000.0" [label="population"];
+"nyc" -> "city" [label="type"];
+"nyc" -> "usa" [label="located-in"];
+"sao-paulo" -> "2.03E7" [label="population"];
+"sao-paulo" -> "brazil" [label="located-in"];
+"sao-paulo" -> "city" [label="type"];
+"uk" -> "country" [label="type"];
+"usa" -> "country" [label="type"];
+"brazil" -> "country" [label="type"];
+"london" -> "9800000.0" [label="population"];
+"london" -> "city" [label="type"];
+"london" -> "uk" [label="located-in"];
+"manchester" -> "2550000.0" [label="population"];
+"manchester" -> "city" [label="type"];
+"manchester" -> "uk" [label="located-in"];
+"cambridge" -> "124000.0" [label="population"];
+"cambridge" -> "city" [label="type"];
+"cambridge" -> "uk" [label="located-in"];
+
+edge[fontname="Inconsolata",fontsize="9",color=red,fontcolor=red];
+node[color=red,style="filled",fontname="Inconsolata",fontcolor=white,fontsize=11];
+
+"CAM" -> "cambridge" [label="name"];
+"CAM" -> "city" [label="type"];
+"LDN" -> "city" [label="type"];
+"LDN" -> "london" [label="name"];
+"MAN" -> "city" [label="type"];
+"MAN" -> "manchester" [label="name"];
+"abbey" -> "CAM" [label="part-of"];
+"abbey" -> "ward" [label="type"];
+"ardwick" -> "MAN" [label="part-of"];
+"ardwick" -> "ward" [label="type"];
+"bradford" -> "MAN" [label="part-of"];
+"bradford" -> "ward" [label="type"];
+"brixton" -> "LDN" [label="part-of"];
+"brixton" -> "borough" [label="type"];
+"camden" -> "LDN" [label="part-of"];
+"camden" -> "borough" [label="type"];
+"castle" -> "CAM" [label="part-of"];
+"castle" -> "ward" [label="type"];
+"hulme" -> "MAN" [label="part-of"];
+"hulme" -> "ward" [label="type"];
+"market" -> "CAM" [label="part-of"];
+"market" -> "ward" [label="type"];
+"westminster" -> "LDN" [label="part-of"];
+"westminster" -> "borough" [label="type"];
+}

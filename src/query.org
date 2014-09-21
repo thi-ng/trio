@@ -14,26 +14,28 @@ describing & matching patterns in a directed graph.
 
 *** Query engine features
 
-| *Feature*                         | *Status*   |
-|-----------------------------------+------------|
-| Query planning                    | INPROGRESS |
-| Query compilation                 | DONE       |
-| Subqueries                        | DONE       |
-| Multi-graph queries               | DONE       |
-| Direct query of clj triple seqs   | DONE       |
-| Filtering (per sub-query)         | DONE       |
-| Joins (fail fast)                 | DONE       |
-| Optional joins                    | DONE       |
-| Union (match alternatives)        | DONE       |
-| Subtraction (negation)            | DONE       |
-| Arbitrary-length paths queries    | INPROGRESS |
-| Result graph construction         | INPROGRESS |
-| Result graph extraction           | INPROGRESS |
-| Result var binding injection      | DONE       |
-| Result ordering on arbitrary vars | DONE       |
-| Result grouping                   | DONE       |
-| Result aggregate expressions      | INPROGRESS |
-| Aggregate filters                 | INPROGRESS |
+| *Feature*                          | *Status*   |
+|------------------------------------+------------|
+| Query planning                     | INPROGRESS |
+| Query compilation                  | DONE       |
+| Subqueries                         | DONE       |
+| Multi-graph queries                | DONE       |
+| Direct query of clj triple seqs    | DONE       |
+| Filtering (per sub-query)          | DONE       |
+| Joins (fail fast)                  | DONE       |
+| Optional joins                     | DONE       |
+| Union (match alternatives)         | DONE       |
+| Subtraction (negation)             | DONE       |
+| Arbitrary-length paths queries     | INPROGRESS |
+| Result graph construction          | INPROGRESS |
+| Result graph extraction            | INPROGRESS |
+| Result var binding injection       | DONE       |
+| Result var aliasing/transformation | DONE       |
+| Result ordering on arbitrary vars  | DONE       |
+| Result grouping                    | DONE       |
+| Result aggregate expressions       | INPROGRESS |
+| Aggregate filters                  | INPROGRESS |
+| Compiler error reporting           | INPROGRESS |
 
 More generally, the engine design was guided by:
 
@@ -42,7 +44,7 @@ More generally, the engine design was guided by:
 - easy to read syntax, no cryptic symbols
 - vanilla Clojure fns for predicates, binding & aggregate fns
 
-*** Examples
+*** Introductory examples
 
 To introduce some of the query engine features, let's define a small graph of relationships:
 
@@ -184,6 +186,32 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 
 [[../assets/query-example03.png]]
 
+
+** Public query API
+
+Currently, the query engine's public API consist of only these two
+functions:
+
+- =compile-query= compiles a query spec
+- =query= executes a query and accepts both pre-compiled queries or
+  raw query specs.
+
+For both functions an exception is thrown if there're any compile
+errors.
+
+#+BEGIN_SRC clojure :noweb-ref compiler-api
+  (defn compile-query
+    [q]
+    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
+      (compile-query-step identity q type)
+      (err/illegal-arg! "Unsupported query type")))
+
+  (defn query
+    [q]
+    (let [res ((if (fn? q) q (compile-query q)) ::empty)]
+      (if (seq res) res)))
+#+END_SRC
+
 ** Query compiler
 
 The role of the query compiler is to analyze and translate query specs
@@ -194,21 +222,66 @@ As shown in the above examples, the query engine supports several
 query types, all of which are described in further detail below.
 Common to all query types is the concept of using one or more
 subqueries (each of which describes one or more graph patterns with
-variables to be matched), and define a number of set operations how
-each individual result set is to be merged to produce the final
-solutions.
+variables to be matched). Each subquery also defines a set operation
+how its individual result set is to be merged with already existing
+results to produce the final solution(s).
+
+*** Compiler steps
+
+Query compilation is realized via the =compile-query-step= multimethod
+in order to cleanly separate logic for each query element and to keep
+the code legible & steps composable.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmulti compile-query-step
+    (fn [qfn q type] type))
+#+END_SRC
+
+Essentially, each compile step is using functional composition to wrap
+its predecessor and combine that result with its own. To allow
+fail-fast behaviors for some phases, the namespaced =::empty= keyword
+is used internally as sentinel to distinguish the initially empty
+result set from an earlier failed search (where results are =nil= or
+an empty seq).
+
+Before discussing the compilation steps dealing with different
+toplevel query types (=:select=, =:construct= etc.), let's first take
+a look at the various sub-queries and their options:
+
+**** Sub queries
+
+The engine currently supports the following subquery types:
+
+| *Type*        | *Key*     | *Options*                 | *Description*                                   |
+|---------------+-----------+---------------------------+-------------------------------------------------|
+| join          | :where    | :from :filter :bind :with | join/intersection of given patterns (fail fast) |
+| join optional | :optional | :from :filter :bind :with | natural join of given patterns                  |
+| union         | :union    | :from :filter :bind :with | add results to existing                         |
+| negation      | :minus    | :from :filter :bind :with | remove results from existing                    |
+
+***** Subquery ordering
+
+*IMPORTANT:* Each subquery can specify one or more search patterns
+which are *always* joined (i.e. if one pattern fails the entire
+subquery fails). The specified set operation (e.g. optional join) is
+only applied to merge a subquery's result set with the already
+computed solution. That also means any query type other than a
+=:where= is potentially meaningless as first (or only) subquery: For
+example, a =:minus= subquery stated as first would attempt to subtract
+its results from a still empty result set and therefore constitute a
+no-op...
 
 # <<queryopts>>
-*** Query options (filters, var injection)
+***** Query options
 
 Each subquery can define its own filters & variable injections. These
-query options are passed via the =:filter= and =:bind= keys. Both
-assume a function which is applied to each unique result binding map.
-However, for most use cases it is more convenient to only specify these
-functions for individual query vars and the following helpers
-allow us to do so.
+query options are passed via the options keys listed in the above
+table. The =:filter= & =:bind= options both assume a function which is
+applied to each unique solution map. However, for most use cases
+it is more convenient to only specify these functions for individual
+query vars and the following helpers allow us to do so.
 
-For example this sub-query asks for artists under 25 and injects a new
+For example this subquery asks for artists under 25 and injects a new
 qvar =?fullname= into each result:
 
 #+BEGIN_SRC clojure
@@ -217,15 +290,14 @@ qvar =?fullname= into each result:
    :bind   {'?fullname (fn [res _] (str (res '?fn) " " (res '?sn)))}}
 #+END_SRC
 
-If specified in this manner (as map with qvars as keys), =:filter=
+*Important:* qvar injection via =:bind= is only applied post-filtering.
+
+****** :filter
+
+If specified as map with qvars as keys, =:filter=
 functions must accept a single arg, i.e. the value of the qvar binding
 to check. Any truthy return value will keep the result in the set of
 solutions.
-
-On the other hand, =:bind= fns must accept 2 args: the full
-result map and the related qvar's value. The return value will be
-bound to the specified qvar in each result/solution, unless the
-function returns =nil=.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn compile-filter-fn
@@ -244,7 +316,19 @@ function returns =nil=.
           (every?
            (fn [[k f]] (let [rv (res k)] (if-not (nil? rv) (f rv) false)))
            filters)))))
+#+END_SRC
 
+****** :bind
+
+On the other hand, =:bind= fns must accept two args:
+
+1. the full result map and
+2. the related qvar's value.
+
+The return value will be bound to the specified qvar in each
+result/solution, unless the function returns =nil=.
+
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn compile-bind-fn
     "Takes a map of qvar bindings as keys and bind fns as values.
     Returns a fn which accepts a single result map and returns updated
@@ -264,60 +348,84 @@ function returns =nil=.
              (let [rv (f res (res k))]
                (if (nil? rv) acc (assoc acc k rv))))
            res bindings)))))
+#+END_SRC
 
+****** :from (Multi-graph queries)
+
+In order to support multi-graph queries, each subquery can specify its
+own graph using the =:from= option. If not specified, the subquery
+inherits the value stated in the main spec.
+
+#+BEGIN_SRC clojure
+  ;; Multigraph example, define two graphs:
+  ;; world-graph contains stats of countries & cities
+  ;; uk-graph contains UK specifics
+
+  (def world-graph
+    (as-model
+     '{usa        {type country}
+       brazil     {type country}
+       uk         {type country}
+       nyc        {type city, population 8.4e6, located-in usa}
+       sao-paulo  {type city, population 20.3e6, located-in brazil}
+       london     {type city, population 9.8e6, located-in uk}
+       manchester {type city, population 2.55e6, located-in uk}
+       cambridge  {type city, population 1.24e5, located-in uk}}))
+
+  (def uk-graph
+    (as-model
+     '[[LDN name london]
+       [MAN name manchester]
+       [CAM name cambridge]
+       [[CAM LDN MAN] type city]
+       [[brixton camden westminster] part-of LDN]
+       [[ardwick bradford hulme] part-of MAN]
+       [[abbey castle market] part-of CAM]
+       [[brixton camden westminster] type borough]
+       [[abbey ardwick bradford castle hulme market] type ward]]))
+#+END_SRC
+
+Visualization of the two graphs combined, with the UK graph shown in red:
+
+[[../assets/multigraph.png]]
+
+#+BEGIN_SRC clojure
+  ;; find all cities w/ population > 1 mil
+  ;; optionally find city regions for any city in UK graph
+  ;; return sorted by ?country -> ?city -> ?region
+  (q/query
+    {:select '[?country ?city ?region]
+     :query [{:where '[[?country type country]
+                       [?city located-in ?country]
+                       [?city population ?pop]]
+              :filter {'?pop #(> % 1e6)}
+              :from world-graph}
+             {:optional '[[?c name ?city] [?region part-of ?c]]
+              :from uk-graph}]
+     :order-asc '[?country ?city ?region]})
+
+  ;; => ({?country brazil, ?city sao-paulo} {?country uk, ?city london, ?region brixton}
+  ;;     {?country uk, ?city london, ?region camden} {?country uk, ?city london, ?region westminster}
+  ;;     {?country uk, ?city manchester, ?region ardwick} {?country uk, ?city manchester, ?region bradford}
+  ;;     {?country uk, ?city manchester, ?region hulme} {?country usa, ?city nyc})
+#+END_SRC
+
+****** :with (Pre-bound values / restrictions)
+
+
+****** Update query options map
+
+#+BEGIN_SRC clojure :noweb-ref helpers
   (defn query-opts
+    "Takes a query options map and injects compiled versions for
+    :filter & :bind keys."
     [opts]
     (-> opts
         (update-in [:filter] compile-filter-fn)
         (update-in [:bind] compile-bind-fn)))
 #+END_SRC
 
-*** Compiler steps
-
-Query compilation is realized via the =compile-query-step= multimethod
-in order to cleanly separate logic for each query element and keep the
-code legible.
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defmulti compile-query-step
-    (fn [qfn q type] type))
-#+END_SRC
-
-Essentially, each compile step is using composition to wrap its
-predecessor and combine that result with its own. To allow fail-fast
-behaviors for some phases, the namespaced =::empty= keyword is used as
-sentinel to distinguish the initially empty result set from an earlier
-failed search (=nil=).
-
-**** Public query API
-
-Currently, the query engine's public API consist of only these two
-functions. =query= accepts both pre-compiled queries or raw query
-specs. An exception is thrown if there're compile errors.
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defn compile-query
-    [q]
-    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
-      (compile-query-step identity q type)
-      (err/unsupported! "Unsupported query type")))
-
-  (defn query
-    [q]
-    (let [res ((if (fn? q) q (compile-query q)) ::empty)]
-      (if (seq res) res)))
-#+END_SRC
-
-**** Sub queries
-
-The engine currently supports the following subquery types:
-
-| *Type*        | *Key*     | *Options*                 | *Description*                                   |
-|---------------+-----------+---------------------------+-------------------------------------------------|
-| join          | :where    | :from :filter :bind :with | join/intersection of given patterns (fail fast) |
-| join optional | :optional | :from :filter :bind :with | natural join of given patterns                  |
-| union         | :union    | :from :filter :bind :with | add results to existing                         |
-| negation      | :minus    | :from :filter :bind :with | remove results from existing                    |
+***** Subquery implementations
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn query-step
@@ -362,12 +470,12 @@ The engine currently supports the following subquery types:
     (query-step qfn thi.ng.trio.query/union q union))
 #+END_SRC
 
-**** Subquery dispatch
+***** Subquery dispatch
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :multi-query
     [qfn {:keys [from with query]} _]
-    (prn :multi query)
+    (prn :query-dispatch query)
     (loop [qfn qfn, query query]
       (if query
         (let [q (first query)
@@ -375,7 +483,6 @@ The engine currently supports the following subquery types:
               q (cond
                  (satisfies? api/PModel from)
                  (assoc q :from from)
-
                  (satisfies? api/PModelConvert from)
                  (assoc q :from (api/as-model from)))
               q (if (:with q) q (assoc q :with (or with {})))
@@ -388,7 +495,7 @@ The engine currently supports the following subquery types:
         qfn)))
 #+END_SRC
 
-**** Result processing
+**** Result processing & modifiers
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :bind
@@ -408,7 +515,7 @@ The engine currently supports the following subquery types:
     (fn [res] (order-desc order (qfn res))))
 #+END_SRC
 
-**** Result projection
+**** Result var projection
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn renamed-vars
@@ -457,7 +564,7 @@ The engine currently supports the following subquery types:
     [qfn {:keys [select group] :as q} _]
     (prn :project-vars select)
     (if group
-      (compile-query-step qfn q :project-aggregates)
+      (compile-query-step qfn q :project-groups)
       (let [select     (if (sequential? select) select [select])
             svars      (selected-var-keys select)
             catch-all? (svars :*)
@@ -467,16 +574,33 @@ The engine currently supports the following subquery types:
           (fn [res] (map #(compute-select-bindings % svars) (qfn res)))))))
 #+END_SRC
 
-**** Result aggregates
+**** Result grouping & aggregates
+
+Query result grouping is only supported for =:select= type queries and
+causes the solutions to be returned as map instead of a flat sequence.
+The returned map is keyed by the result value of the qvars or function
+given for the =:group= keyword in the query spec.
+
+Multi-value clustering can be achieved by specifying several qvars as
+sequence. In this case, the keys of the solution map are unique tuples
+of the given qvar values. If a function is used to compute the
+grouping criteria, that function be called for each individual result
+map and the return value is used to define grouping.
+
+***** Example
 
 The following example graph maps authors to their books & prices. We
 will query this graph using grouping and compute some aggregate stats
 for each author:
 
 #+BEGIN_SRC clojure
+  ;; Aggregate query example
+  ;; first define some aggregation functions:
+
   (defn avg [vals] (/ (reduce + vals) (count vals)))
   (defn max' [vals] (reduce max vals))
 
+  ;; data store of authors, books & prices
   (def ds
     (as-model
      '[[a1 author [b1 b2]]
@@ -507,7 +631,17 @@ for each author:
   ;; => {a3 {?avg 20, ?max 20, ?num 1}, a1 {?avg 15, ?max 20, ?num 2}}
 #+END_SRC
 
+***** Implementation
+
 #+BEGIN_SRC clojure :noweb-ref compiler
+  (defn compile-group-fn
+    [group]
+    (if (fn? group)
+      group
+      (if (sequential? group)
+        (fn [res] (reduce #(conj % (res %2)) [] group))
+        (fn [res] (res group)))))
+
   (defn compute-aggregates
     [vars vals]
     (reduce-kv
@@ -574,15 +708,16 @@ for each author:
                   acc)))
             {}))))
 
-  (defmethod compile-query-step :project-aggregates
+  (defmethod compile-query-step :project-groups
     [qfn {:keys [select group aggregate having] :as q} _]
-    (prn :project-aggregates group aggregate)
+    (prn :project-groups group aggregate)
     (let [select     (if (sequential? select) select [select])
           svars      (selected-var-keys select)
           catch-all? (svars :*)
           svars      (validate-selected-vars svars)
           agg-only?  (every? (set (keys aggregate)) (keys svars))
           filter     (compile-filter-fn having)
+          group      (compile-group-fn group)
           qfn        (fn [res] (group-by group (qfn res)))]
       (prn :svars svars)
       (if (seq aggregate)
@@ -594,7 +729,8 @@ for each author:
           (compile-query-step qfn [svars filter] :project-aggregates-simple)))))
 #+END_SRC
 
-**** Query type: SELECT
+**** Main query types
+***** Query type: SELECT
 
 *Purpose:* Match patterns in graph, return sequence of all found
 solutions. Each solution is a map of unique qvar bindings.
@@ -648,7 +784,7 @@ solutions. Each solution is a map of unique qvar bindings.
      true       (compile-query-step q :project-vars)))
 #+END_SRC
 
-**** Query type: CONSTRUCT
+***** Query type: CONSTRUCT
 
 *Purpose:* Matches patterns in graph(s) and binds values to qvars,
 then construct new triples using bound qvars solutions. Returns seq of
@@ -703,7 +839,7 @@ query spec.
           (compile-query-step q :construct-triples))))
 #+END_SRC
 
-**** Query type: ASK
+***** Query type: ASK
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :ask
@@ -715,7 +851,7 @@ query spec.
       (fn [res] (if (seq (qfn res)) true false))))
 #+END_SRC
 
-**** Query type: DESCRIBE
+***** Query type: DESCRIBE
 
 *Purpose:* Extract sub-graphs for nodes matched via query.
 
@@ -1252,4 +1388,6 @@ Select only grandchildren for given person:
   <<dfs>>
 
   <<compiler>>
+
+  <<compiler-api>>
 #+END_SRC
