@@ -462,8 +462,6 @@ qvar =?fullname= into each result:
    :bind   {'?fullname (fn [res _] (str (res '?fn) " " (res '?sn)))}}
 #+END_SRC
 
-*Important:* qvar injection via =:bind= is only applied /post/-filtering.
-
 ****** :filter
 
 If specified as map with qvars as keys, =:filter=
@@ -500,6 +498,9 @@ On the other hand, =:bind= fns must accept two args:
 The return value will be bound to the specified qvar in each
 result/solution, unless the function returns =nil=.
 
+*Important:* For subqueries, qvar injection via =:bind= is only
+applied /post/-filtering.
+
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn compile-bind-fn
     "Takes a map of qvar bindings as keys and bind fns as values.
@@ -525,8 +526,8 @@ result/solution, unless the function returns =nil=.
 ****** :from (Multi-graph queries)
 
 In order to support multi-graph queries, each subquery can specify its
-own graph using the =:from= option. If not specified, the subquery
-inherits the value stated in the main spec.
+own graph to act on using the =:from= option. If not specified, the
+subquery inherits the value stated in the main spec.
 
 #+BEGIN_SRC clojure
   ;; Multigraph example, define two graphs:
@@ -730,7 +731,7 @@ result variable projection & filtering is the final transformation
 step of a =:select=. During this phase the engine does the following:
 
 - any qvars not requested by the user (but which are present in the solutions) are removed
-- any qvars with aliasing or transformation fns are processed/renamed
+- any qvars with aliasing or transformation fns are renamed/processed
 - result seq is transformed into a map when =:group= is enabled (optional)
 - aggregation functions are run (optional)
 - results are passed through top-level filter (optional)
@@ -821,28 +822,26 @@ qvar's value during the final projection.
 **** Result aggregation & grouping
 
 The query engine supports the computation of aggregate values
-(reductions) for both grouped and ungrouped result sets. Aggregate
+(reductions) for both grouped and ungrouped result sets. Aggregated
 qvars are defined via the top-level =:aggregate= key which is a map
 with qvars as keys and their reduction functions as values.
 
-There are differences in how such aggregate qvars appear in the
+There are differences in how such aggregated qvars appear in the
 solution, based on if grouping is enabled or not. If no group criteria
 are given, aggregate qvars and their values are injected into every
 single result map of the solution seq. This table gives a better
 overview of the expected outcomes when aggregation is used:
 
-| *Grouping* | *:select contains* | *:select contains*   | *Solution format*                                                                  |
-|            | *aggregate vars*   | *non-aggregate vars* |                                                                                    |
-|------------+--------------------+----------------------+------------------------------------------------------------------------------------|
-| <c>        | <c>                | <c>                  |                                                                                    |
-| Y          | Y                  | Y                    | map keyed by group, each group a seq of result maps w/ agg. qvars injected in each |
-| Y          | Y                  | N                    | map keyed by group, each key only single map of agg. qvars                         |
-| Y          | N                  | Y                    | map keyed by group, each group a seq of result maps, no agg. qvars (pointless)     |
-| N          | Y                  | Y                    | seq of result maps, each w/ selected qvars and agg. qvars injected in each         |
-| N          | Y                  | N                    | map w/ only agg. qvars                                                             |
-| N          | N                  | Y                    | seq of result maps, each w/ selected qvars                                         |
+| *Grouping* | *Aggregated vars selected* | *Non-aggregated vars selected* | *Solution format*                                                                  |
+|------------+---------------------------+------------------------------+------------------------------------------------------------------------------------|
+| Y          | Y                         | Y                            | map keyed by group, each group a seq of result maps w/ agg. qvars injected in each |
+| Y          | Y                         | N                            | map keyed by group, each key only single map of agg. qvars                         |
+| Y          | N                         | Y                            | map keyed by group, each group a seq of result maps, no agg. qvars (pointless)     |
+| N          | Y                         | Y                            | seq of result maps, each w/ selected qvars and agg. qvars injected in each         |
+| N          | Y                         | N                            | map w/ only agg. qvars                                                             |
+| N          | N                         | Y                            | seq of result maps, each w/ selected qvars                                         |
 
-*Note:* Aggregate qvars will not automatically appear in the solution
+*Note:* Aggregated qvars will not automatically appear in the solution
 unless stated in the list of =:select= qvars. They can be further
 aliased & transformed during projection just as "normal" qvars...
 
@@ -855,8 +854,8 @@ the =:group= option in the query spec.
 Multi-value clustering can be achieved by specifying several qvars as
 sequence. In this case, the keys of the solution map are unique tuples
 of the given qvar values. If a function is used to compute the
-grouping criteria, that function be called for each individual result
-map and the return value is used to define grouping.
+grouping criteria, that function will be called for each individual
+result map and the return value is used to define grouping.
 
 ***** Example
 
@@ -1027,8 +1026,15 @@ for each author:
           (compile-query-step qfn [svars filter] :group-aggregates-simple)))))
 #+END_SRC
 
-** Helpers
-*** Query variables
+** Lowlevel query functions
+
+The functions in this section do the actual heavy-lifting and together
+with the =select= method of a triplestore's =PModel= protocol
+implementation provide the pattern matching functionality the query
+engine relies on.
+
+*** Helpers
+**** Query variables
 #+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
 
@@ -1049,10 +1055,12 @@ for each author:
     [x] (-> x name (subs 1)))
 #+END_SRC
 
-*** Query pattern resolution & handling
-**** Specifying variable length paths
+**** Query pattern resolution & handling
+***** Specifying variable length paths
 
-- http://www.w3.org/TR/sparql11-query/#propertypaths
+The table below provides an overview of possible property paths which
+can be defined for each search pattern. In principle these are based
+on the options defined for [[http://www.w3.org/TR/sparql11-query/#propertypaths][SPARQL]], albeit using different syntax.
 
 | *Path pattern*          | *Description*                        | *Meaning*                                                     |
 |-------------------------+--------------------------------------+---------------------------------------------------------------|
@@ -1062,6 +1070,12 @@ for each author:
 | =[?s [:* p1 p2] ?o]=    | partial path, cyclic                 | if path exists *partially* one or more times, bind =?s=, =?o= |
 | =[?s [:not p] ?o]=      | single edge *not* via =p=            | equivalent to: ={:where [?s ?pp ?o]} {:minus [?s p ?o]}=      |
 | =[?s [:or p1 p2] ?o]=   | single edge =p1= *or* =p2=           | equivalent to: ={:where [?s p1 ?o]} {:union [?s p2 ?o]}=      |
+
+*Important:* Please note, that property paths are not yet supported by
+the highlevel query engine, but are actively being work on. Currently,
+the first four property path styles can only be directly queried (in
+isolation) using the low-level =select-transitive= function described
+below.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn resolve-path-pattern
@@ -1088,7 +1102,7 @@ for each author:
      patterns))
 #+END_SRC
 
-**** Pattern generation
+***** Pattern generation
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn produce-patterns-with-bound-vars
@@ -1112,7 +1126,12 @@ for each author:
         [[s p o]])))
 #+END_SRC
 
-**** Query planning
+***** Query planning
+
+Better query planning is still an active TODO item. The only step
+towards this so far is the following function, which sorts patterns of
+an single subquery based on a heuristic prioritizing patterns with
+least qvars and therefore producing the most constrained result set.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn sort-patterns
@@ -1127,7 +1146,7 @@ for each author:
            (map peek))))
 #+END_SRC
 
-**** Pattern based triple verification
+***** Pattern based triple verification
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn triple-verifier
@@ -1156,7 +1175,7 @@ for each author:
      :default (constantly true)))
 #+END_SRC
 
-*** Result handling
+**** Result handling
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn unique-bindings?
     "Returns true if all values in the given map are unique, i.e.
@@ -1164,8 +1183,8 @@ for each author:
     [map] (== (count (into #{} (vals map))) (count map)))
 
   (defn accumulate-result-vars
-    "Takes a query result map seq and returns map of all found qvars
-    as keys and their value sets."
+    "Takes a seq of query result maps and returns a map of all found
+    qvars as keys and their value sets."
     ([res] (accumulate-result-vars {} nil res))
     ([acc vars res]
        (let [acc (reduce
@@ -1226,8 +1245,8 @@ for each author:
      res))
 #+END_SRC
 
-*** Graphviz export
-**** TODO move to separate ns
+**** Graphviz export
+***** TODO move to separate ns
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn triples->dot
@@ -1248,7 +1267,7 @@ for each author:
       "}")))
 #+END_SRC
 
-** Joins
+*** Joins
 
 #+BEGIN_SRC clojure :noweb-ref joins
   (defn join
@@ -1292,7 +1311,7 @@ for each author:
      [a b] (set (concat a b)))
 #+END_SRC
 
-** Select
+*** Select
 
 #+BEGIN_SRC clojure :noweb-ref selectors
   (defn unbound-var?
@@ -1388,7 +1407,7 @@ for each author:
                         bind (map bind))))))))
 #+END_SRC
 
-** Transitive properties & path queries
+*** Transitive properties & path queries
 
 If using equal min/max search depth, resort to =select-join= with
 expanded pattern. In that case the predicate can be a seq =[pred1
