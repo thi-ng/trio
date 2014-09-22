@@ -259,7 +259,8 @@ solutions. Each solution is a map of unique qvar bindings.
 | :select     | :*, qvar(s), map           | Defines which qvars appear in solution                             | Y          |
 |             |                            | (See [[var-projection][Result var projection]])                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y          |
+| :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y/N        |
+|             |                            | (only mandatory if any subquery doesn't provide its own =:from=)   |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[Sub queries]])                 | Y          |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
