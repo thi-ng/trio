@@ -27,22 +27,22 @@ describing & matching patterns in a directed graph.
 | Union (match alternatives)         | DONE       |
 | Subtraction (negation)             | DONE       |
 | Arbitrary-length paths queries     | INPROGRESS |
-| Result graph construction          | INPROGRESS |
+| Result graph construction          | DONE       |
 | Result graph extraction            | INPROGRESS |
 | Result var binding injection       | DONE       |
 | Result var aliasing/transformation | DONE       |
 | Result ordering on arbitrary vars  | DONE       |
 | Result grouping                    | DONE       |
-| Result aggregate expressions       | INPROGRESS |
-| Aggregate filters                  | INPROGRESS |
+| Result aggregate expressions       | DONE       |
+| Aggregate filters                  | DONE       |
 | Compiler error reporting           | INPROGRESS |
 
-More generally, the engine design was guided by:
+More generally, the overall engine design was guided by:
 
 - no macro magic, completely functional
-- use plain hash maps to formulate and dynamically compose query specs
+- use of plain hash maps to formulate and dynamically compose query specs
 - easy to read syntax, no cryptic symbols
-- vanilla Clojure fns for predicates, binding & aggregate fns
+- use of vanilla Clojure fns for predicates, binding & aggregate fns
 
 *** Introductory examples
 
@@ -225,8 +225,6 @@ variables to be matched). Each subquery also defines a set operation
 how its individual result set is to be merged with already existing
 results to produce the final solution(s).
 
-*** Compiler steps
-
 Query compilation is realized via the =compile-query-step= multimethod
 in order to cleanly separate logic for each query element and to keep
 the code legible & steps composable.
@@ -246,8 +244,8 @@ an empty seq).
 Before discussing the compilation steps in detail we first define and
 take a look at the various query types and their options:
 
-**** Main query types
-***** Query type: SELECT
+*** Main query types
+**** Query type: SELECT
 
 *Purpose:* Match patterns in graph, return sequence of all found
 solutions. Each solution is a map of unique qvar bindings.
@@ -303,7 +301,7 @@ solutions. Each solution is a map of unique qvar bindings.
      true       (compile-query-step q :project-vars)))
 #+END_SRC
 
-***** Query type: CONSTRUCT
+**** Query type: CONSTRUCT
 
 *Purpose:* Matches patterns in graph(s) and binds values to qvars,
 then construct new triples using bound qvars solutions. Returns seq of
@@ -359,7 +357,7 @@ query spec.
           (compile-query-step q :construct-triples))))
 #+END_SRC
 
-***** Query type: ASK
+**** Query type: ASK
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :ask
@@ -371,7 +369,7 @@ query spec.
       (fn [res] (if (seq (qfn res)) true false))))
 #+END_SRC
 
-***** Query type: DESCRIBE
+**** Query type: DESCRIBE
 
 *Purpose:* Extract sub-graphs for nodes matched via query.
 
@@ -398,6 +396,10 @@ query spec.
 Any other options supported by =:select= will be removed from the
 query spec.
 
+*Important:* =:describe= queries currently only work with single graph
+ queries, i.e. only the default graph specified for =:from= is being
+ used to retrieve the final result triples.
+
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :describe
     [qfn {:keys [from describe] :as q} _]
@@ -418,7 +420,7 @@ query spec.
              #{} (keys vars)))))))
 #+END_SRC
 
-**** Sub queries
+*** Sub queries
 
 The engine currently supports the following subquery types:
 
@@ -429,7 +431,7 @@ The engine currently supports the following subquery types:
 | union         | :union    | :from :filter :bind :values | add results to existing                         |
 | negation      | :minus    | :from :filter :bind :values | remove results from existing                    |
 
-***** Subquery ordering
+**** Subquery ordering
 
 *IMPORTANT:* Each subquery can specify one or more search patterns
 which are *always* joined (i.e. if one pattern fails the entire
@@ -442,7 +444,7 @@ subtract its results from a still empty result set and therefore
 constitute a no-op...
 
 # <<queryopts>>
-***** Query options
+**** Query options
 
 Each subquery can define its own filters & variable injections and
 other options. These are passed via the options keys listed in the
@@ -462,7 +464,7 @@ qvar =?fullname= into each result:
    :bind   {'?fullname (fn [res _] (str (res '?fn) " " (res '?sn)))}}
 #+END_SRC
 
-****** :filter
+***** :filter
 
 If specified as map with qvars as keys, =:filter=
 functions must accept a single arg, i.e. the value of the qvar binding
@@ -488,7 +490,7 @@ solutions.
            filters)))))
 #+END_SRC
 
-****** :bind
+***** :bind
 
 On the other hand, =:bind= fns must accept two args:
 
@@ -523,7 +525,7 @@ applied /post/-filtering.
            res bindings)))))
 #+END_SRC
 
-****** :from (Multi-graph queries)
+***** :from (Multi-graph queries)
 
 In order to support multi-graph queries, each subquery can specify its
 own graph to act on using the =:from= option. If not specified, the
@@ -583,7 +585,7 @@ Visualization of the two graphs combined, with the UK graph shown in red:
   ;;     {?country uk, ?city manchester, ?region hulme} {?country usa, ?city nyc})
 #+END_SRC
 
-****** :values (Pre-bound values / search restrictions)
+***** :values (Pre-bound values / search restrictions)
 
 As discussed above, specifying a =:filter= allows us to constrain the
 solution space of a query, however a filter is always applied *after*
@@ -621,7 +623,7 @@ option:
     :query [{:where '[[?p ?log ?msg]] :values {'?p #{:server :db}}}]})
 #+END_SRC
 
-****** Update query options map
+***** Update query options map
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn query-opts
@@ -633,7 +635,7 @@ option:
         (update-in [:bind] compile-bind-fn)))
 #+END_SRC
 
-***** Subquery implementations
+**** Subquery implementations
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn query-step
@@ -678,7 +680,7 @@ option:
     (query-step qfn thi.ng.trio.query/union q union))
 #+END_SRC
 
-***** Subquery dispatch
+**** Subquery dispatch
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :query-dispatch
@@ -703,7 +705,7 @@ option:
         qfn)))
 #+END_SRC
 
-**** Result processing & modifiers
+*** Result processing & modifiers
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :bind
@@ -724,7 +726,7 @@ option:
 #+END_SRC
 
 # <<var-projection>>
-**** Result var projection & final filtering
+*** Result var projection & final filtering
 
 All top-level query types are based on an initial =:select= query and
 result variable projection & filtering is the final transformation
@@ -736,7 +738,7 @@ step of a =:select=. During this phase the engine does the following:
 - aggregation functions are run (optional)
 - results are passed through top-level filter (optional)
 
-***** Result var aliasing & transformation
+**** Result var aliasing & transformation
 
 For =:select= queries, the engine supports the implicit renaming of
 qvars in the set of solutions, as well as the option to transform a
@@ -754,7 +756,7 @@ qvar's value during the final projection.
 |                                       | Note: the =:fn= key is optional                                  |
 | [?v1 {?v2 #(...) ?v3 {:use ...}}]     | Combination of all above options is possible too                 |
 
-***** Implementation
+**** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn renamed-vars
@@ -819,7 +821,7 @@ qvar's value during the final projection.
             (compile-query-step qfn [svars filter] :project-vars-simple))))))
 #+END_SRC
 
-**** Result aggregation & grouping
+*** Result aggregation & grouping
 
 The query engine supports the computation of aggregate values
 (reductions) for both grouped and ungrouped result sets. Aggregated
@@ -857,7 +859,7 @@ of the given qvar values. If a function is used to compute the
 grouping criteria, that function will be called for each individual
 result map and the return value is used to define grouping.
 
-***** Example
+**** Example
 
 The following example graph maps authors to their books & prices. We
 will query this graph using grouping and compute some aggregate stats
@@ -903,7 +905,7 @@ for each author:
   ;; => {a3 {?avg 20, ?max 20, ?num 1}, a1 {?avg 15, ?max 20, ?num 2}}
 #+END_SRC
 
-***** Implementation
+**** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn compile-group-fn

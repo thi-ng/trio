@@ -2,16 +2,17 @@
 
 ![Example graph](assets/multigraph.png)
 
-Simple, yet extensible and datatype agnostic
-[triple store](http://en.wikipedia.org/wiki/Triplestore) API and
-powerful [SPARQL](http://en.wikipedia.org/wiki/SPARQL)-like query
-engine for Clojure/ClojureScript.
+Simple, extensible and datatype agnostic
+[triplestore](http://en.wikipedia.org/wiki/Triplestore) API and
+powerful [SPARQL](http://en.wikipedia.org/wiki/SPARQL)-inspired query
+engine for Clojure/ClojureScript (without any RDF specifics, but more
+flexibility).
 
 ## Description & usage
 
 - [Project overview & dependencies](src/index.org)
 - [Query engine & examples](src/query.org)
-- [Triple stores](src/core.org)
+- [Triplestore API & implementations](src/core.org)
 
 ## License
 
