@@ -186,7 +186,6 @@ The extracted sub-graph defined by the result triples (edges in red are the matc
 
 [[../assets/query-example03.png]]
 
-
 ** Public query API
 
 Currently, the query engine's public API consist of only these two
@@ -244,20 +243,191 @@ is used internally as sentinel to distinguish the initially empty
 result set from an earlier failed search (where results are =nil= or
 an empty seq).
 
-Before discussing the compilation steps dealing with different
-toplevel query types (=:select=, =:construct= etc.), let's first take
-a look at the various sub-queries and their options:
+Before discussing the compilation steps in detail we first define and
+take a look at the various query types and their options:
+
+**** Main query types
+***** Query type: SELECT
+
+*Purpose:* Match patterns in graph, return sequence of all found
+solutions. Each solution is a map of unique qvar bindings.
+
+*Use cases:*
+- General graph queries / pattern matching
+- Result transformations
+
+| *Key*       | *Value(s)*                 | *Description*                                                      | *Required* |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :select     | :*, qvar(s), map           | Defines which qvars appear in solution                             | Y          |
+|             |                            | (See [[var-projection][Result var projection]])                                        |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y          |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[Sub queries]])                 | Y          |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :bind       | fn or bindings map         | Inject/transform qvars in final solutions                          | N          |
+|             |                            | (see [[queryopts][Query options]])                                                |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :values     | '{?v1 #{a b} ?v2 c ..}     | Pre-bind qvars to given values for all subqueries                  | N          |
+|             |                            | in order to constrain search.                                      |            |
+|             |                            | If a value set is specified for a qvar, attempts all options given |            |
+|             |                            |                                                                    |            |
+|             |                            | *Note:* The same effect can be achieved with filters,              |            |
+|             |                            | though pre-binding will produce optimized queries                  |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :aggregate  | {?v fn ...}                | Compute aggregate values and inject into solution                  | N          |
+|             |                            | (See [[Result aggregation & grouping]])                                |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :filter     | (fn [res] ..) or {?v fn..} | Filter final solutions                                             | N          |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :order-asc  | '?var                      | Sort solutions by qvar (ascending)                                 | N          |
+|             | '[?v1 ?v2 ..]              | Nested sort by first ?v1, ?v2 ...                                  |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :order-desc | same as =:order-asc=       | Sort solutions by qvar (descending)                                | N          |
+|             |                            |                                                                    |            |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :group      | '?var                      | Group solutions by qvar                                            | N          |
+|             | (fn [res] group-key)       | Group solutions by return value of fn                              |            |
+|             |                            |                                                                    |            |
+|             |                            | *Note:* returns solutions as map (not as seq)                      |            |
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmethod compile-query-step :select
+    [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
+    (prn :select select)
+    (cond->
+     (compile-query-step qfn q :query-dispatch)
+     bind       (compile-query-step bind :bind)
+     order-asc  (compile-query-step order-asc :order-asc)
+     order-desc (compile-query-step order-desc :order-desc)
+     true       (compile-query-step q :project-vars)))
+#+END_SRC
+
+***** Query type: CONSTRUCT
+
+*Purpose:* Matches patterns in graph(s) and binds values to qvars,
+then construct new triples using bound qvars solutions. Returns seq of
+constructed triples.
+
+*Use cases:*
+- Rule-based inference
+- Triple mapping/updating
+- Reification
+- Annotation
+- Adding of provenance data
+- Graph transformation (in combination w/ =:describe=)
+
+| *Key*      | *Value(s)*                | *Description*                                      | *Required* |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :construct | [pattern ...]             | solutions contain all used qvars                   | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :from      | trio.core/PModel instance | default triplestore to use for all sub-queries     | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]]) | yes        |
+|------------+---------------------------+----------------------------------------------------+------------|
+| :bind      | fn or bindings map        | inject/transform qvars in final solutions          | no         |
+|            |                           | (see [[queryopts][Query options]])                                |            |
+
+Any other options supported by =:select= will be removed from the
+query spec.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmethod compile-query-step :construct-triples
+    [qfn {:keys [construct] :as q} _]
+    (fn [res]
+      (->> res
+           qfn
+           (mapcat
+            (fn [r]
+              (map
+               (fn [[s p o]]
+                 (let [s (if (qvar? s) (r s) s)
+                       p (if (qvar? p) (r p) p)
+                       o (if (qvar? o) (r o) o)]
+                   (if (and s p o) (api/triple s p o))))
+               construct)))
+           (filter identity)
+           (set))))
+
+  (defmethod compile-query-step :construct
+    [qfn q _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :group)
+                (assoc :select :*))]
+      (-> qfn
+          (compile-query-step q :select)
+          (compile-query-step q :construct-triples))))
+#+END_SRC
+
+***** Query type: ASK
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmethod compile-query-step :ask
+    [qfn q _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :bind :group :aggregate)
+                (assoc :select :*))
+          qfn (compile-query-step qfn q :select)]
+      (fn [res] (if (seq (qfn res)) true false))))
+#+END_SRC
+
+***** Query type: DESCRIBE
+
+*Purpose:* Extract sub-graphs for nodes matched via query.
+
+*Use cases:*
+
+- REST APIs (resource extraction)
+- Graph partitioning/segmentation
+- Complete removal of resources from graph
+
+*Options:*
+
+| *Key*     | *Value(s)*                | *Description*                                              | *Required* |
+|-----------+---------------------------+------------------------------------------------------------+------------|
+| :describe | '?var                     | select sub-graphs of nodes in the value set of single qvar | yes        |
+|           | '[?v1 ?v2 ...]            | select sub-graphs of given qvar value sets                 |            |
+|-----------+---------------------------+------------------------------------------------------------+------------|
+| :from     | trio.core/PModel instance | default triplestore to use for all sub-queries             | yes        |
+|-----------+---------------------------+------------------------------------------------------------+------------|
+| :query    | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]])         | yes        |
+|-----------+---------------------------+------------------------------------------------------------+------------|
+| :bind     | fn or bindings map        | inject/transform qvars in final solutions                  | no         |
+|           |                           | (see [[queryopts][Query options]])                                        |            |
+
+Any other options supported by =:select= will be removed from the
+query spec.
+
+#+BEGIN_SRC clojure :noweb-ref compiler
+  (defmethod compile-query-step :describe
+    [qfn {:keys [from describe] :as q} _]
+    (let [q (-> q
+                (dissoc :order-asc :order-desc :group :aggregate)
+                (assoc :select :*))
+          qfn (compile-query-step qfn q :select)
+          describe (if (sequential? describe) describe [describe])]
+      (fn [res]
+        (let [vars (select-keys (accumulate-result-vars (qfn res)) describe)]
+          (if (seq vars)
+            (reduce
+             (fn [acc v]
+               (let [vals (vars v)]
+                 (-> acc
+                     (into (mapcat #(api/select from % nil nil) vals))
+                     (into (mapcat #(api/select from nil nil %) vals)))))
+             #{} (keys vars)))))))
+#+END_SRC
 
 **** Sub queries
 
 The engine currently supports the following subquery types:
 
-| *Type*        | *Key*     | *Options*                 | *Description*                                   |
-|---------------+-----------+---------------------------+-------------------------------------------------|
-| join          | :where    | :from :filter :bind :with | join/intersection of given patterns (fail fast) |
-| join optional | :optional | :from :filter :bind :with | natural join of given patterns                  |
-| union         | :union    | :from :filter :bind :with | add results to existing                         |
-| negation      | :minus    | :from :filter :bind :with | remove results from existing                    |
+| *Type*        | *Key*     | *Options*                   | *Description*                                   |
+|---------------+-----------+-----------------------------+-------------------------------------------------|
+| join          | :where    | :from :filter :bind :values | join/intersection of given patterns (fail fast) |
+| join optional | :optional | :from :filter :bind :values | natural join of given patterns                  |
+| union         | :union    | :from :filter :bind :values | add results to existing                         |
+| negation      | :minus    | :from :filter :bind :values | remove results from existing                    |
 
 ***** Subquery ordering
 
@@ -267,19 +437,21 @@ subquery fails). The specified set operation (e.g. optional join) is
 only applied to merge a subquery's result set with the already
 computed solution. That also means any query type other than a
 =:where= is potentially meaningless as first (or only) subquery: For
-example, a =:minus= subquery stated as first would attempt to subtract
-its results from a still empty result set and therefore constitute a
-no-op...
+example, a =:minus= subquery stated as first subquery would attempt to
+subtract its results from a still empty result set and therefore
+constitute a no-op...
 
 # <<queryopts>>
 ***** Query options
 
-Each subquery can define its own filters & variable injections. These
-query options are passed via the options keys listed in the above
-table. The =:filter= & =:bind= options both assume a function which is
-applied to each unique solution map. However, for most use cases
-it is more convenient to only specify these functions for individual
-query vars and the following helpers allow us to do so.
+Each subquery can define its own filters & variable injections and
+other options. These are passed via the options keys listed in the
+above table.
+
+The =:filter= & =:bind= options both assume a function which is
+applied to each unique solution map. However, for most use cases it is
+more convenient to only specify these functions for individual query
+vars and the following helpers allow us to do so.
 
 For example this subquery asks for artists under 25 and injects a new
 qvar =?fullname= into each result:
@@ -290,7 +462,7 @@ qvar =?fullname= into each result:
    :bind   {'?fullname (fn [res _] (str (res '?fn) " " (res '?sn)))}}
 #+END_SRC
 
-*Important:* qvar injection via =:bind= is only applied post-filtering.
+*Important:* qvar injection via =:bind= is only applied /post/-filtering.
 
 ****** :filter
 
@@ -410,8 +582,43 @@ Visualization of the two graphs combined, with the UK graph shown in red:
   ;;     {?country uk, ?city manchester, ?region hulme} {?country usa, ?city nyc})
 #+END_SRC
 
-****** :with (Pre-bound values / restrictions)
+****** :values (Pre-bound values / search restrictions)
 
+As discussed above, specifying a =:filter= allows us to constrain the
+solution space of a query, however a filter is always applied *after*
+each subquery and so might have to deal with a large amount of
+extraneous results. Whereas a filter can specify arbitrary criteria,
+for some use cases we're only interested in certain qvars taking a
+number of possible constants/values and it would be more efficient to
+*pre-constrain* the search space. This is achieved via the =:values=
+option:
+
+#+BEGIN_SRC clojure
+  ;; Example graph of randomly generated log messages
+  (def g
+    (->> #(vector
+           (rand-nth [:server :queue :scheduler :render :db :api])
+           (rand-nth [:debug :info :warning])
+           (rand-nth ["m1" "m2" "m3" "m4" "m5" "m6" "m7" "m8" "m9"]))
+         (repeatedly 100)
+         (as-model)))
+
+  ;; using :filter - select all messages for :server or :db process
+  ;; note: the pattern [?p ?log ?msg] matches *all* triples in the graph
+  (q/query
+   {:select :*
+    :from g
+    :query [{:where '[[?p ?log ?msg]] :filter {'?p #{:server :db}}}]})
+
+  ;; => ({?p :server, ?log :debug, ?msg "m7"} {?p :db, ?log :warn, ?msg "m9"} ...)
+
+  ;; using :values - constrain ?p to either :server or :db *prior* to querying
+  ;; produces same result, but with reduced effort
+  (q/query
+   {:select :*
+    :from g
+    :query [{:where '[[?p ?log ?msg]] :values {'?p #{:server :db}}}]})
+#+END_SRC
 
 ****** Update query options map
 
@@ -429,52 +636,52 @@ Visualization of the two graphs combined, with the UK graph shown in red:
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn query-step
-    [qfn join-fn {:keys [from with] :as q} patterns]
+    [qfn join-fn {:keys [from values] :as q} patterns]
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join from with opts patterns)
+              b (select-join from values opts patterns)
               res' (if (= ::empty a) b (join-fn a b))]
           res'))))
 
   (defmethod compile-query-step :join
-    [qfn {:keys [from with where] :as q} _]
-    (prn :join where with)
+    [qfn {:keys [from values where] :as q} _]
+    (prn :join where values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from with opts where)
+            (let [b (select-join from values opts where)
                   res' (if (= ::empty a) b (join a b))]
               res')
             a)))))
 
   (defmethod compile-query-step :minus
-    [qfn {:keys [from with minus] :as q} _]
-    (prn :minus minus with)
+    [qfn {:keys [from values minus] :as q} _]
+    (prn :minus minus values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
           (if (seq a)
-            (thi.ng.trio.query/minus a (select-join from with opts minus))
+            (thi.ng.trio.query/minus a (select-join from values opts minus))
             a)))))
 
   (defmethod compile-query-step :optional
-    [qfn {:keys [from with optional] :as q} _]
-    (prn :join-opt optional with)
+    [qfn {:keys [from values optional] :as q} _]
+    (prn :join-opt optional values)
     (query-step qfn join-optional q optional))
 
   (defmethod compile-query-step :union
-    [qfn {:keys [from with union] :as q} _]
-    (prn :union union with)
+    [qfn {:keys [from values union] :as q} _]
+    (prn :union union values)
     (query-step qfn thi.ng.trio.query/union q union))
 #+END_SRC
 
 ***** Subquery dispatch
 
 #+BEGIN_SRC clojure :noweb-ref compiler
-  (defmethod compile-query-step :multi-query
-    [qfn {:keys [from with query]} _]
+  (defmethod compile-query-step :query-dispatch
+    [qfn {:keys [from values query]} _]
     (prn :query-dispatch query)
     (loop [qfn qfn, query query]
       (if query
@@ -485,7 +692,7 @@ Visualization of the two graphs combined, with the UK graph shown in red:
                  (assoc q :from from)
                  (satisfies? api/PModelConvert from)
                  (assoc q :from (api/as-model from)))
-              q (if (:with q) q (assoc q :with (or with {})))
+              q (if (:values q) q (assoc q :values (or values {})))
               qfn (cond
                    (:where q)    (compile-query-step qfn q :join)
                    (:optional q) (compile-query-step qfn q :optional)
@@ -515,7 +722,38 @@ Visualization of the two graphs combined, with the UK graph shown in red:
     (fn [res] (order-desc order (qfn res))))
 #+END_SRC
 
-**** Result var projection
+# <<var-projection>>
+**** Result var projection & final filtering
+
+All top-level query types are based on an initial =:select= query and
+result variable projection & filtering is the final transformation
+step of a =:select=. During this phase the engine does the following:
+
+- any qvars not requested by the user (but which are present in the solutions) are removed
+- any qvars with aliasing or transformation fns are processed/renamed
+- result seq is transformed into a map when =:group= is enabled (optional)
+- aggregation functions are run (optional)
+- results are passed through top-level filter (optional)
+
+***** Result var aliasing & transformation
+
+For =:select= queries, the engine supports the implicit renaming of
+qvars in the set of solutions, as well as the option to transform a
+qvar's value during the final projection.
+
+| *:select value*                       | *Description*                                                    |
+|---------------------------------------+------------------------------------------------------------------|
+| :*                                    | keep all bound qvars in result maps                              |
+| '?v                                   | result maps only contain given qvar                              |
+| '[?v1 ?v2 ...]                        | result maps only contain given qvars                             |
+| {'?v (fn [v] ...)}                    | result maps only contain qvars used as keys in the map           |
+|                                       | and their values transformed w/ fn                               |
+| {'?alias {:use '?v :fn (fn [v] ...)}} | result maps only contain qvars used as keys in the map           |
+|                                       | but take (optionally transformed) value of qvar given for =:use= |
+|                                       | Note: the =:fn= key is optional                                  |
+| [?v1 {?v2 #(...) ?v3 {:use ...}}]     | Combination of all above options is possible too                 |
+
+***** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn renamed-vars
@@ -561,25 +799,58 @@ Visualization of the two graphs combined, with the UK graph shown in red:
       svars))
 
   (defmethod compile-query-step :project-vars
-    [qfn {:keys [select group] :as q} _]
+    [qfn {:keys [select group aggregate filter] :as q} _]
     (prn :project-vars select)
-    (if group
-      (compile-query-step qfn q :project-groups)
-      (let [select     (if (sequential? select) select [select])
-            svars      (selected-var-keys select)
-            catch-all? (svars :*)
-            svars      (validate-selected-vars svars)]
-        (if catch-all?
-          qfn
-          (fn [res] (map #(compute-select-bindings % svars) (qfn res)))))))
+    (let [select     (if (sequential? select) select [select])
+          svars      (selected-var-keys select)
+          catch-all? (svars :*)
+          svars      (validate-selected-vars svars)
+          agg-only?  (every? (set (keys aggregate)) (keys svars))
+          filter     (compile-filter-fn filter)]
+      (if group
+        (compile-query-step qfn [group aggregate svars filter agg-only? catch-all?] :project-groups)
+        (if (seq aggregate)
+          (if (and agg-only? (not catch-all?))
+            (compile-query-step qfn [aggregate svars filter] :project-vars-aggregates)
+            (compile-query-step qfn [aggregate svars catch-all? filter] :project-vars-mixed))
+          (if catch-all?
+            (compile-query-step qfn filter :project-vars-all)
+            (compile-query-step qfn [svars filter] :project-vars-simple))))))
 #+END_SRC
 
-**** Result grouping & aggregates
+**** Result aggregation & grouping
 
-Query result grouping is only supported for =:select= type queries and
-causes the solutions to be returned as map instead of a flat sequence.
-The returned map is keyed by the result value of the qvars or function
-given for the =:group= keyword in the query spec.
+The query engine supports the computation of aggregate values
+(reductions) for both grouped and ungrouped result sets. Aggregate
+qvars are defined via the top-level =:aggregate= key which is a map
+with qvars as keys and their reduction functions as values.
+
+There are differences in how such aggregate qvars appear in the
+solution, based on if grouping is enabled or not. If no group criteria
+are given, aggregate qvars and their values are injected into every
+single result map of the solution seq. This table gives a better
+overview of the expected outcomes when aggregation is used:
+
+| *Grouping* | *:select contains* | *:select contains*   | *Solution format*                                                                  |
+|            | *aggregate vars*   | *non-aggregate vars* |                                                                                    |
+|------------+--------------------+----------------------+------------------------------------------------------------------------------------|
+| <c>        | <c>                | <c>                  |                                                                                    |
+| Y          | Y                  | Y                    | map keyed by group, each group a seq of result maps w/ agg. qvars injected in each |
+| Y          | Y                  | N                    | map keyed by group, each key only single map of agg. qvars                         |
+| Y          | N                  | Y                    | map keyed by group, each group a seq of result maps, no agg. qvars (pointless)     |
+| N          | Y                  | Y                    | seq of result maps, each w/ selected qvars and agg. qvars injected in each         |
+| N          | Y                  | N                    | map w/ only agg. qvars                                                             |
+| N          | N                  | Y                    | seq of result maps, each w/ selected qvars                                         |
+
+*Note:* Aggregate qvars will not automatically appear in the solution
+unless stated in the list of =:select= qvars. They can be further
+aliased & transformed during projection just as "normal" qvars...
+
+Whereas aggregation is supported for all query types, result grouping
+is only supported for =:select= type queries and causes the solutions
+to be returned as map instead of a flat sequence. The returned map is
+keyed by the result value of the stated qvars or function given for
+the =:group= option in the query spec.
 
 Multi-value clustering can be achieved by specifying several qvars as
 sequence. In this case, the keys of the solution map are unique tuples
@@ -604,11 +875,13 @@ for each author:
   (def ds
     (as-model
      '[[a1 author [b1 b2]]
-       [a2 author b3]
+       [a2 author [b1 b3]]
        [a3 author b4]
        [b1 price 10]
        [[b2 b4] price 20]
        [b3 price 5]]))
+
+  ;; (spit "../assets/aggregates.dot" (q/triples->dot (select ds)))
 #+END_SRC
 
 [[../assets/aggregates.png]]
@@ -626,7 +899,7 @@ for each author:
     :aggregate {'?avg {:use '?p :fn avg}
                 '?max {:use '?p :fn max'}
                 '?num count}
-    :having {'?avg #(> % 10)}})
+    :filter {'?avg #(> % 10)}})
 
   ;; => {a3 {?avg 20, ?max 20, ?num 1}, a1 {?avg 15, ?max 20, ?num 2}}
 #+END_SRC
@@ -652,250 +925,106 @@ for each author:
            (assoc inner v (f vals)))))
      {} vars))
 
-  (defmethod compile-query-step :project-aggregates-only
+  (defn project-aggregates-only
+    [avars svars filter]
+    (fn [vals]
+      (let [agg (compute-aggregates avars vals)]
+        (if (or (nil? filter) (filter agg))
+          (compute-select-bindings agg svars)))))
+
+  (defn project-aggregates-mixed
+    [avars svars all? flt]
+    (fn [vals]
+      (let [agg  (compute-aggregates avars vals)
+            vals (map #(merge % agg) vals)
+            vals (if flt (filter flt vals) vals)]
+        (if (seq vals)
+          (if all?
+            vals
+            (map #(compute-select-bindings % svars) vals))))))
+
+  (defn project-aggregates-simple
+    [vars flt]
+    (fn [vals]
+      (let [vals (if flt (filter flt vals) vals)]
+        (if (seq vals)
+          (map #(compute-select-bindings % vars) vals)))))
+
+  (defn project-aggregates-all
+    [flt]
+    (fn [vals]
+      (let [vals (if flt (filter flt vals) vals)]
+        (if (seq vals) vals))))
+
+  (defmethod compile-query-step :project-vars-aggregates
     [qfn [avars svars filter] _]
     (prn :aggregates-only avars filter)
-    (fn [res]
-      (->> (qfn res)
-           (reduce-kv
-            (fn [acc k vals]
-              (let [agg (compute-aggregates avars vals)]
-                (if (or (nil? filter) (filter agg))
-                  (assoc acc k (compute-select-bindings agg svars))
-                  acc)))
-            {}))))
+    (let [project-fn (project-aggregates-only avars svars filter)]
+      (fn [res] (->> (qfn res) (project-fn)))))
 
-  (defmethod compile-query-step :project-aggregates-mixed
+  (defmethod compile-query-step :project-vars-mixed
     [qfn [avars svars all? flt] _]
     (prn :mixed-aggregates avars svars all? flt)
-    (fn [res]
-      (->> (qfn res)
-           (reduce-kv
-            (fn [acc k vals]
-              (let [agg  (compute-aggregates avars vals)
-                    vals (map #(merge % agg) vals)
-                    vals (if flt (filter flt vals) vals)]
-                (if (seq vals)
-                  (if all?
-                    (assoc acc k vals)
-                    (assoc acc k (map #(compute-select-bindings % svars) vals)))
-                  acc)))
-            {}))))
+    (let [project-fn (project-aggregates-mixed avars svars all? flt)]
+      (fn [res] (->> (qfn res) (project-fn)))))
 
-  (defmethod compile-query-step :project-aggregates-simple
+  (defmethod compile-query-step :project-vars-simple
     [qfn [vars flt] _]
     (prn :simple-aggregates vars flt)
-    (fn [res]
-      (->> (qfn res)
-           (reduce-kv
-            (fn [acc k vals]
-              (let [vals (if flt (filter flt vals) vals)]
-                (if (seq vals)
-                  (assoc acc k (map #(compute-select-bindings % vars) vals))
-                  acc)))
-            {}))))
+    (let [project-fn (project-aggregates-simple vars flt)]
+      (fn [res] (->> (qfn res) (project-fn)))))
 
-  (defmethod compile-query-step :project-aggregates-all
+  (defmethod compile-query-step :project-vars-all
     [qfn flt _]
     (prn :all-aggregates flt)
-    (fn [res]
-      (->> (qfn res)
-           (reduce-kv
-            (fn [acc k vals]
-              (let [vals (if flt (filter flt vals) vals)]
-                (if (seq vals)
-                  (assoc acc k vals)
-                  acc)))
-            {}))))
+    (let [project-fn (project-aggregates-all flt)]
+      (fn [res] (->> (qfn res) (project-fn)))))
+
+  (defn project-groups-with
+    [project-fn res]
+    (reduce-kv
+     (fn [acc k vals]
+       (if-let [v (project-fn vals)]
+         (assoc acc k v)
+         acc))
+     {} res))
+
+  (defmethod compile-query-step :group-aggregates-only
+    [qfn [avars svars filter] _]
+    (prn :aggregates-only avars filter)
+    (let [project-fn (project-aggregates-only avars svars filter)]
+      (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
+
+  (defmethod compile-query-step :group-aggregates-mixed
+    [qfn [avars svars all? flt] _]
+    (prn :mixed-aggregates avars svars all? flt)
+    (let [project-fn (project-aggregates-mixed avars svars all? flt)]
+      (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
+
+  (defmethod compile-query-step :group-aggregates-simple
+    [qfn [vars flt] _]
+    (prn :simple-aggregates vars flt)
+    (let [project-fn (project-aggregates-simple vars flt)]
+      (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
+
+  (defmethod compile-query-step :group-aggregates-all
+    [qfn flt _]
+    (prn :all-aggregates flt)
+    (let [project-fn (project-aggregates-all flt)]
+      (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :project-groups
-    [qfn {:keys [select group aggregate having] :as q} _]
+    [qfn [group aggregate svars filter agg-only? catch-all?] _]
     (prn :project-groups group aggregate)
-    (let [select     (if (sequential? select) select [select])
-          svars      (selected-var-keys select)
-          catch-all? (svars :*)
-          svars      (validate-selected-vars svars)
-          agg-only?  (every? (set (keys aggregate)) (keys svars))
-          filter     (compile-filter-fn having)
-          group      (compile-group-fn group)
-          qfn        (fn [res] (group-by group (qfn res)))]
-      (prn :svars svars)
+    (let [group (compile-group-fn group)
+          qfn   (fn [res] (group-by group (qfn res)))]
       (if (seq aggregate)
         (if (and agg-only? (not catch-all?))
-          (compile-query-step qfn [aggregate svars filter] :project-aggregates-only)
-          (compile-query-step qfn [aggregate svars catch-all? filter] :project-aggregates-mixed))
+          (compile-query-step qfn [aggregate svars filter] :group-aggregates-only)
+          (compile-query-step qfn [aggregate svars catch-all? filter] :group-aggregates-mixed))
         (if catch-all?
-          (compile-query-step qfn filter :project-aggregates-all)
-          (compile-query-step qfn [svars filter] :project-aggregates-simple)))))
-#+END_SRC
-
-**** Main query types
-***** Query type: SELECT
-
-*Purpose:* Match patterns in graph, return sequence of all found
-solutions. Each solution is a map of unique qvar bindings.
-
-*Use cases:*
-- General graph queries / pattern matching
-- Result transformations
-
-| *Key*       | *Value(s)*                | *Description*                                                      | *Required* |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :select     | :*                        | Solutions contain all used qvars                                   | yes        |
-|             | '?var                     | Solutions contain only this single qvar                            |            |
-|             | '[?v1 ?v2 ...]            | Solutions contain only given qvars                                 |            |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :from       | trio.core/PModel instance | Default triplestore to use for all sub-queries                     | yes        |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :query      | [{sub-query} ...]         | Seq of any number of sub-queries (see [[Sub queries]])                 | yes        |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :bind       | fn or bindings map        | Inject/transform qvars in final solutions                          | no         |
-|             |                           | (see [[queryopts][Query options]])                                                |            |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :with       | '{?v1 #{a b} ?v2 c}       | Pre-bind qvars to given values for all subqueries                  | no         |
-|             |                           | in order to constrain search.                                      |            |
-|             |                           | If a value set is specified for a qvar, attempts all options given |            |
-|             |                           |                                                                    |            |
-|             |                           | *Note:* The same effect can be achieved with filters,              |            |
-|             |                           | though pre-binding will produce optimized queries                  |            |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :order-asc  | '?var                     | Sort solutions by qvar (ascending)                                 | no         |
-|             | '[?v1 ?v2 ..]             | Nested sort by first ?v1, ?v2 ...                                  |            |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :order-desc | same as =:order-asc=      | Sort solutions by qvar (descending)                                | no         |
-|-------------+---------------------------+--------------------------------------------------------------------+------------|
-| :group      | '?var                     | Group solutions by qvar                                            | no         |
-|             | (fn [res] group-key)      | Group solutions by return value of fn                              |            |
-|             |                           |                                                                    |            |
-|             |                           | *Note:*                                                            |            |
-|             |                           | - returns solutions as map (not as seq)                            |            |
-|             |                           | - grouping occurs /after/ qvar filtering,                          |            |
-|             |                           | - hence can only group by qvars in =:select=                       |            |
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defmethod compile-query-step :select
-    [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
-    (prn :select select)
-    (cond->
-     (compile-query-step qfn q :multi-query)
-     bind       (compile-query-step bind :bind)
-     order-asc  (compile-query-step order-asc :order-asc)
-     order-desc (compile-query-step order-desc :order-desc)
-     true       (compile-query-step q :project-vars)))
-#+END_SRC
-
-***** Query type: CONSTRUCT
-
-*Purpose:* Matches patterns in graph(s) and binds values to qvars,
-then construct new triples using bound qvars solutions. Returns seq of
-constructed triples.
-
-*Use cases:*
-- Inference
-- Triple mapping/updating
-- Reification
-- Annotation
-- Adding of provenance data
-
-| *Key*      | *Value(s)*                | *Description*                                      | *Required* |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :construct | [pattern ...]             | solutions contain all used qvars                   | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :from      | trio.core/PModel instance | default triplestore to use for all sub-queries     | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]]) | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :bind      | fn or bindings map        | inject/transform qvars in final solutions          | no         |
-|            |                           | (see [[queryopts][Query options]])                                |            |
-
-Any other options supported by =:select= will be removed from the
-query spec.
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defmethod compile-query-step :construct-triples
-    [qfn {:keys [construct] :as q} _]
-    (fn [res]
-      (->> res
-           qfn
-           (mapcat
-            (fn [r]
-              (map
-               (fn [[s p o]]
-                 (let [s (if (qvar? s) (r s) s)
-                       p (if (qvar? p) (r p) p)
-                       o (if (qvar? o) (r o) o)]
-                   (if (and s p o) (api/triple s p o))))
-               construct)))
-           (filter identity)
-           (set))))
-
-  (defmethod compile-query-step :construct
-    [qfn q _]
-    (let [q (-> q
-                (dissoc :order-asc :order-desc :group)
-                (assoc :select :*))]
-      (-> qfn
-          (compile-query-step q :select)
-          (compile-query-step q :construct-triples))))
-#+END_SRC
-
-***** Query type: ASK
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defmethod compile-query-step :ask
-    [qfn q _]
-    (let [q (-> q
-                (dissoc :order-asc :order-desc :bind :group)
-                (assoc :select :*))
-          qfn (compile-query-step qfn q :select)]
-      (fn [res] (if (seq (qfn res)) true false))))
-#+END_SRC
-
-***** Query type: DESCRIBE
-
-*Purpose:* Extract sub-graphs for nodes matched via query.
-
-*Use cases:*
-
-- REST APIs
-- Graph partitioning/segmentation
-
-*Options:*
-
-| *Key*     | *Value(s)*                | *Description*                                              | *Required* |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :describe | '?var                     | select sub-graphs of nodes in the value set of single qvar | yes        |
-|           | '[?v1 ?v2 ...]            | select sub-graphs of given qvar value sets                 |            |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :from     | trio.core/PModel instance | default triplestore to use for all sub-queries             | yes        |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :query    | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]])         | yes        |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :bind     | fn or bindings map        | inject/transform qvars in final solutions                  | no         |
-|           |                           | (see [[queryopts][Query options]])                                        |            |
-
-Any other options supported by =:select= will be removed from the
-query spec.
-
-#+BEGIN_SRC clojure :noweb-ref compiler
-  (defmethod compile-query-step :describe
-    [qfn {:keys [from describe] :as q} _]
-    (let [q (-> q
-                (dissoc :order-asc :order-desc :group)
-                (assoc :select :*))
-          qfn (compile-query-step qfn q :select)
-          describe (if (sequential? describe) describe [describe])]
-      (fn [res]
-        (let [res (qfn res)
-              vars (select-keys (accumulate-result-vars res) describe)]
-          (if (seq vars)
-            (reduce
-             (fn [acc v]
-               (let [vals (vars v)]
-                 (-> acc
-                     (into (mapcat #(api/select from % nil nil) vals))
-                     (into (mapcat #(api/select from nil nil %) vals)))))
-             #{} (keys vars)))))))
+          (compile-query-step qfn filter :group-aggregates-all)
+          (compile-query-step qfn [svars filter] :group-aggregates-simple)))))
 #+END_SRC
 
 ** Helpers
