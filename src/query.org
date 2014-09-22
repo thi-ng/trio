@@ -750,19 +750,76 @@ For =:select= queries, the engine supports the implicit renaming of
 qvars in the set of solutions, as well as the option to transform a
 qvar's value during the final projection.
 
-| *:select value*                       | *Description*                                                    |
-|---------------------------------------+------------------------------------------------------------------|
-| :*                                    | keep all bound qvars in result maps                              |
-| '?v                                   | result maps only contain given qvar                              |
-| '[?v1 ?v2 ...]                        | result maps only contain given qvars                             |
-| {'?v (fn [v] ...)}                    | result maps only contain qvars used as keys in the map           |
-|                                       | and their values transformed w/ fn                               |
-| {'?alias {:use '?v :fn (fn [v] ...)}} | result maps only contain qvars used as keys in the map           |
-|                                       | but take (optionally transformed) value of qvar given for =:use= |
-|                                       | Note: the =:fn= key is optional                                  |
-| [?v1 {?v2 #(...) ?v3 {:use ...}}]     | Combination of all above options is possible too                 |
+| *:select value*                           | *Description*                                                    |
+|-------------------------------------------+------------------------------------------------------------------|
+| :*                                        | Keep all bound qvars in result maps                              |
+|-------------------------------------------+------------------------------------------------------------------|
+| '?v                                       | Result maps only contain given qvar                              |
+| '[?v1 ?v2 ...]                            | Result maps only contain given qvars                             |
+|-------------------------------------------+------------------------------------------------------------------|
+| {'?v (fn [res] (* 2 (res '?v)))}          | Result maps only contain qvars used as keys in the map           |
+|                                           | and their values as transformed by fn                            |
+|                                           | *Note:* The fn receives the full result map                      |
+|-------------------------------------------+------------------------------------------------------------------|
+| {'?alias ?orig}                           | Result maps only contain ?alias but values from ?orig            |
+|-------------------------------------------+------------------------------------------------------------------|
+| {'?alias {:use '?v :fn (fn [v] ...)}}     | Result maps only contain qvars used as keys in the map           |
+|                                           | but take (optionally transformed) value of qvar given for =:use= |
+|                                           | *Note:* the =:fn= key is optional                                |
+|-------------------------------------------+------------------------------------------------------------------|
+| [?v1 {?v2 #(...) ?v3 {:use ... :fn ...}}] | Combination of all above options is possible too                 |
 
-**** Implementation
+As shown in the table, in order to rename and/or transform a qvar
+binding during projection we need to use a map in one of these formats:
+
+#+BEGIN_SRC clojure
+  ;; solution contains ?a and ?b-new (as alias for ?b)
+  :select ['?a {'?b-new '?b}]
+
+  ;; solution contains ?a and ?b-new (as alias for ?b and transformed ?b values)
+  :select ['?a {'?b-new {:use '?b :fn #(* 100.0 %)}}]
+
+  ;; solution contains ?a and ?b (transformation fn receives full result map)
+  :select ['?a {'?b (fn [res] (* (res '?b) (inc (res '?tax))))}]
+
+  ;; same as above, but only ?b (don't need to wrap map in vector)
+  :select {'?b (fn [res] (* (res '?b) (inc (res '?tax))))}
+#+END_SRC
+
+***** Example
+
+The following example graph maps authors to their books & prices:
+
+[[../assets/bookauthors.png]]
+
+#+BEGIN_SRC clojure
+  ;; data store of authors, books & prices
+  (def ds
+    (as-model
+     [[:a1 :author [:b1 :b2]]
+      [:a2 :author [:b1 :b3]]
+      [:a3 :author :b4]
+      [:b1 :price 10]
+      [[:b2 :b4] :price 20]
+      [:b3 :price 5]]))
+#+END_SRC
+
+Let's query this graph to return all books with price < 20 and
+calculate their retail price incl. taxes:
+
+#+BEGIN_SRC clojure
+  (q/query
+   {:select ['?b '{?net ?p, '?retail {:use '?p :fn #(* 1.2 %)}}]
+    :from ds
+    :query '[{:where [[?a :author ?b] [?b :price ?p]]}]
+    :filter {'?p #(< % 20)}})
+
+  ;; => ({?b :b3, ?net 5, ?retail 6.0}
+  ;;     {?b :b1, ?net 10, ?retail 12.0}
+  ;;     {?b :b1, ?net 10, ?retail 12.0})
+#+END_SRC
+
+***** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn renamed-vars
@@ -867,8 +924,8 @@ result map and the return value is used to define grouping.
 
 **** Example
 
-The following example graph maps authors to their books & prices. We
-will query this graph using grouping and compute some aggregate stats
+Let's use once more the above example graph of book authors. We will
+now query this graph using grouping and compute some aggregate stats
 for each author:
 
 #+BEGIN_SRC clojure
@@ -878,22 +935,6 @@ for each author:
   (defn avg [vals] (/ (reduce + vals) (count vals)))
   (defn max' [vals] (reduce max vals))
 
-  ;; data store of authors, books & prices
-  (def ds
-    (as-model
-     '[[a1 author [b1 b2]]
-       [a2 author [b1 b3]]
-       [a3 author b4]
-       [b1 price 10]
-       [[b2 b4] price 20]
-       [b3 price 5]]))
-
-  ;; (spit "../assets/aggregates.dot" (q/triples->dot (select ds)))
-#+END_SRC
-
-[[../assets/aggregates.png]]
-
-#+BEGIN_SRC clojure
   ;; retrieve book prices, group by author
   ;; compute avg. & max price, group size per author
   ;; filter by avg.
@@ -901,7 +942,7 @@ for each author:
   (q/query
    {:select '[?avg ?max ?num]
     :from ds
-    :query '[{:where [[?a author ?b] [?b price ?p]]}]
+    :query '[{:where [[?a :author ?b] [?b :price ?p]]}]
     :group '?a
     :aggregate {'?avg {:use '?p :fn avg}
                 '?max {:use '?p :fn max'}
@@ -909,6 +950,16 @@ for each author:
     :filter {'?avg #(> % 10)}})
 
   ;; => {a3 {?avg 20, ?max 20, ?num 1}, a1 {?avg 15, ?max 20, ?num 2}}
+
+  ;; produce map of authors and their collected books
+  (q/query
+   {:select :books
+    :from ds
+    :query '[{:where [[?a :author ?b]]}]
+    :group '?a
+    :aggregate {:books {:use '?b :fn #(into #{} %)}}})
+
+  ;; => {:a1 {:books #{:b2 :b1}}, :a2 {:books #{:b1 :b3}}, :a3 {:books #{:b4}}}
 #+END_SRC
 
 **** Implementation
