@@ -423,7 +423,10 @@ query spec.
 
 *** Sub queries
 
-The engine currently supports the following subquery types:
+Every query spec must contain a =:query= key which is a vector or seq
+of subqueries and which themselves are maps. The engine currently
+supports the following subquery types:
+
 
 | *Type*        | *Key*     | *Options*                   | *Description*                                   |
 |---------------+-----------+-----------------------------+-------------------------------------------------|
@@ -434,15 +437,15 @@ The engine currently supports the following subquery types:
 
 **** Subquery ordering
 
-*IMPORTANT:* Each subquery can specify one or more search patterns
-which are *always* joined (i.e. if one pattern fails the entire
-subquery fails). The specified set operation (e.g. optional join) is
-only applied to merge a subquery's result set with the already
-computed solution. That also means any query type other than a
-=:where= is potentially meaningless as first (or only) subquery: For
-example, a =:minus= subquery stated as first subquery would attempt to
-subtract its results from a still empty result set and therefore
-constitute a no-op...
+*IMPORTANT:* Each subquery *must* specify one or more search patterns
+which are *always* joined in order and are fail fast (i.e. if one
+pattern fails the entire subquery fails). The specified set operation
+(e.g. optional join) is only applied to merge a subquery's result set
+with the already computed solution. That also means, any query type
+other than a =:where= is potentially meaningless as first (or only)
+subquery: For example, a =:minus= subquery stated as first subquery
+would attempt to subtract its results from a still empty result set
+and therefore constitute a no-op...
 
 # <<queryopts>>
 **** Query options
@@ -455,6 +458,8 @@ The =:filter= & =:bind= options both assume a function which is
 applied to each unique solution map. However, for most use cases it is
 more convenient to only specify these functions for individual query
 vars and the following helpers allow us to do so.
+
+***** Example
 
 For example this subquery asks for artists under 25 and injects a new
 qvar =?fullname= into each result:
