@@ -2,26 +2,102 @@
 
 * thi.ng.trio.test.core
 
+** Main tests
+
+#+BEGIN_SRC clojure :noweb-ref tests
+  (def g1
+    '[[[alice bob carl] friend ed]
+      [alice mother [fred gemma]]
+      [bob father fred]
+      [gemma mother henry]
+      [fred father [inigo james]]])
+
+  (defn select-set
+    [ds & [s p o]] (set (api/select ds s p o)))
+
+  (deftest conversions
+    (let [t1 '[[s1 p o]                   ;; 1
+               [[s1 s2] p o]              ;; 2
+               [s3 [p1 p2] o]             ;; 2
+               [s4 p [o1 o2]]             ;; 2
+               [[s5 s6] [p1 p2] [o1 o2]]  ;; 8
+               [[s7 s8] [p1 p2] o]        ;; 4
+               [[s9 s0] p1 [o1 o2]]       ;; 4
+               [s0 [p2 p3] [o1 o2]]]      ;; 4
+          t2 '{s1 {p1 o1 p2 o2}           ;; 2
+               s2 {p1 [o1 o1 o2] p3 o3}}] ;; 4
+      (is (satisfies? api/PModelConvert []))
+      (is (satisfies? api/PModelConvert (list)))
+      (is (satisfies? api/PModelConvert (cons '[s p o] nil)))
+      (is (satisfies? api/PModelConvert (lazy-seq [])))
+      (is (satisfies? api/PModelConvert {}))
+      (is (== 27 (count (api/triple-seq-sequential t1))))
+      (is (== 6  (count (api/triple-seq-associative t2))))
+      (is (== 26 (api/model-size (api/as-model t1))))
+      (is (== 5  (api/model-size (api/as-model t2))))))
+
+  (defn test-store-api
+    [name ds]
+    (testing
+        (str "testing store: " name)
+      (is (== 9 (api/model-size ds) (count (select-set ds))))
+      (is (= (set (api/triple-seq-sequential g1)) (set (select-set ds))))
+      (is (= '#{alice bob carl gemma fred} (set (api/subjects ds))))
+      (is (= '#{friend mother father} (set (api/predicates ds))))
+      (is (= '#{ed fred gemma henry inigo james} (set (api/objects ds))))
+      ;; s ? ?
+      (is (= '#{[bob friend ed] [bob father fred]}
+             (select-set ds 'bob nil nil)))
+      ;; ? p ?
+      (is (= '#{[alice mother fred] [alice mother gemma] [gemma mother henry]}
+             (select-set ds nil 'mother nil)))
+      ;; ? ? o
+      (is (= '#{[alice friend ed] [bob friend ed] [carl friend ed]}
+             (select-set ds nil nil 'ed)))
+      ;; s p ?
+      (is (= '#{[alice mother fred] [alice mother gemma]}
+             (select-set ds 'alice 'mother nil)))
+      ;; s ? o
+      (is (= '#{[fred father inigo]}
+             (select-set ds 'fred nil 'inigo)))
+      ;; ? p o
+      (is (= '#{[gemma mother henry]}
+             (select-set ds nil 'mother 'henry)))
+      (is (= #{} (select-set ds 'henry 'friend 'bob)))))
+
+  (deftest plainstore-api
+    (test-store-api "plain-store" (api/as-model g1)))
+
+  (deftest aliasstore-api
+    (let [ds  (api/alias-store (api/as-model g1) nil)
+          ds2 (api/alias-store (api/as-model g1) '{alice a, gemma g, mother parent})
+          ac  (u/canonical ds2 'alice)
+          mc  (u/canonical ds2 'mother)
+          gc  (u/canonical ds2 'gemma)]
+      (test-store-api "alias-store1" ds)
+      (is (every? #(contains? (set (api/subjects ds2)) %) [ac gc]))
+      (is (contains? (set (api/predicates ds2)) mc))
+      (is (contains? (set (api/objects ds2)) gc))
+      (is (api/subject? ds2 'alice))
+      (is (api/predicate? ds2 'mother))
+      (is (api/object? ds2 'gemma))
+      (is (= #{[ac 'friend 'ed] [ac mc 'fred] [ac mc gc]}
+             (select-set ds2 'alice nil nil)))))
+#+END_SRC
+
 ** Namespace declaration
 
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/core.cljx :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/core.cljx :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.test.core
-    (:require
-     ,#+clj  [clojure.test :refer :all]
-     ,#+cljs [cemerick.cljs.test :as t])
     ,#+cljs
     (:require-macros
-     [cemerick.cljs.test :refer (is deftest with-test testing)]))
-#+END_SRC
-** TODO Test constants
+     [cemerick.cljs.test :refer [is deftest with-test testing]])
+    (:require
+     [thi.ng.trio.core :as api]
+     [thi.ng.trio.query :as q]
+     [thi.ng.common.data.unionfind :as u]
+     ,#+clj  [clojure.test :refer :all]
+     ,#+cljs [cemerick.cljs.test :as t]))
 
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/core.cljx
-  (def meaning 42)
-#+END_SRC
-
-** TODO Main tests
-
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/core.cljx
-  (deftest epic-fail
-    (is (= 3 (+ 1 1)) "FIXME"))
+  <<tests>>
 #+END_SRC
