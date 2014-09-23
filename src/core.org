@@ -404,14 +404,24 @@ of the code.
 
   ,#+cljs IHash
   ,#+cljs (-hash
-          [_] (or __hash (set! (.-__hash _) (hash-coll _))))
+          [_]
+          (or __hash
+              (set! (.-__hash _)
+                    (mix-collection-hash
+                     (-> 31 (+ (hash s))
+                         (bit-or 0)
+                         (imul 31) (+ (hash p))
+                         (bit-or 0)
+                         (imul 31) (+ (hash o))
+                         (bit-or 0))
+                     3))))
 
   ,#+cljs IEquiv
   ,#+cljs (-equiv
           [_ x]
           (if (instance? Triple x)
             (and (= s (.-s ^Triple x)) (= p (.-p ^Triple x)) (= o (.-o ^Triple x)))
-            (and (sequential? x) (= 3 (count x))
+            (and (sequential? x) (== 3 (count x))
                  (= s (nth x 0)) (= p (nth x 1)) (= o (nth x 2)))))
 
   ,#+cljs IReduce
@@ -654,6 +664,18 @@ avoid major rewrite operations.
           (AliasMemoryStore. store aliases))))
 
     PModel
+    (subject? [_ x]
+      (subject? store (or (u/canonical aliases x) x)))
+    (predicate? [_ x]
+      (predicate? store (or (u/canonical aliases x) x)))
+    (object? [_ x]
+      (object? store (or (u/canonical aliases x) x)))
+    (indexed? [_ x]
+      (indexed? store (or (u/canonical aliases x) x)))
+    (subjects [_] (subjects store))
+    (predicates [_] (predicates store))
+    (objects [_] (objects store))
+    (model-size [_] (model-size store))
     (select
       [_] (select _ nil nil nil))
     (select
@@ -976,12 +998,20 @@ with the =triple-seq-associative= fn.
   (extend-protocol PModelConvert
 
     ,#+clj  clojure.lang.Sequential
-    ,#+cljs ISequential
+    ,#+cljs PersistentVector
     (as-model [_] (apply plain-store (triple-seq-sequential _)))
+    ,#+cljs List
+    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
+    ,#+cljs LazySeq
+    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
+    ,#+cljs IndexedSeq
+    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
 
     ,#+clj  clojure.lang.IPersistentMap
-    ,#+cljs IMap
+    ,#+cljs PersistentHashMap
     (as-model [_] (apply plain-store (triple-seq-associative _)))
+    ,#+cljs PersistentArrayMap
+    ,#+cljs (as-model [_] (apply plain-store (triple-seq-associative _)))
     
     )
 #+END_SRC
