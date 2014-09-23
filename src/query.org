@@ -1150,8 +1150,10 @@ stringified map of explanations/reasons for each failed key.
   (defn validate
     [q spec]
     (try
-      (let [[_ err] (v/validate q spec)]
-        (when err (err/throw! (str "error compiling query: " err))))
+      (let [[ret err] (v/validate q spec)]
+        (if-not err
+          ret
+          (err/throw! (str "error compiling query: " err))))
       (catch Exception e
         (err/throw! (str "error compiling query: " (.getMessage e))))))
 #+END_SRC
