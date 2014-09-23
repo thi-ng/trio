@@ -221,7 +221,7 @@ As shown in the above examples, the query engine supports several
 query types, all of which are described in further detail below.
 Common to all query types is the concept of using one or more
 subqueries (each of which describes one or more graph patterns with
-variables to be matched). Each subquery also defines a set operation
+variables to be matched). Each sub-query also defines a set operation
 how its individual result set is to be merged with already existing
 results to produce the final solution(s).
 
@@ -254,13 +254,15 @@ solutions. Each solution is a map of unique qvar bindings.
 - General graph queries / pattern matching
 - Result transformations
 
+***** Query spec keys
+
 | *Key*       | *Value(s)*                 | *Description*                                                      | *Required* |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :select     | :*, qvar(s), map           | Defines which qvars appear in solution                             | Y          |
 |             |                            | (See [[var-projection][Result var projection]])                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y/N        |
-|             |                            | (only mandatory if any subquery doesn't provide its own =:from=)   |            |
+|             |                            | (only mandatory if any sub-query doesn't provide its own =:from=)   |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[Sub queries]])                 | Y          |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
@@ -290,10 +292,59 @@ solutions. Each solution is a map of unique qvar bindings.
 |             |                            |                                                                    |            |
 |             |                            | *Note:* returns solutions as map (not as seq)                      |            |
 
+***** Order of processing steps
+
+The order of processing steps of a =:select= query is as follows:
+
+1. Compile query spec
+2. Produce solution seq via iterative sub-query processing
+3. Inject qvars given via =:bind= option in all results
+4. Sort solution seq via =:order-asc= or =:order-desc= options
+5. Project variables
+   1. Perform grouping, if enabled
+   2. Compute & inject aggregations (if grouped, apply aggregation fns for each key's solution set)
+   3. Final result filtering
+
+***** Query spec validation
+
+The query compiler uses [[https://thi.ng/validate][thi.ng/validate]] to verify all query specs and
+provide useful error messages. The follow spec serves as formal (but
+non-exhaustive) definition of a valid top-level =:select= query.
+Further validation occurs for certain query elements (e.g. during
+sub-query dispatch, see below).
+
+#+BEGIN_SRC clojure :noweb-ref validators
+  (def validator-select
+    {:select    (v/alts
+                 [(v/symbol) (v/keyword) (v/sequential)]
+                 "must be a qvar, keyword or seq")
+     :from      (v/optional
+                 (v/alts
+                  [(v/sequential) (v/satisfies api/PModel)]
+                  "must satisfy the thi.ng.trio.core.PModel protocol"))
+     :query     {:* (v/map)}
+     :bind      (v/optional
+                 (v/alts
+                  [(v/map) (v/function)]
+                  "must be a map or fn"))
+     :group     (v/optional
+                 (v/alts
+                  [(v/symbol) (v/sequential) (v/function)]
+                  "must be a qvar, qvar seq or fn"))
+     :aggregate (v/optional (v/map))
+     :filter    (v/optional
+                 (v/alts
+                  [(v/map) (v/function)]
+                  "must be a map or fn"))})
+#+END_SRC
+
+***** Implementation
+
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :select
-    [qfn {:keys [select from query bind order-asc order-desc group] :as q} _]
+    [qfn {:keys [select bind order-asc order-desc] :as q} _]
     (prn :select select)
+    (validate q validator-select)
     (cond->
      (compile-query-step qfn q :query-dispatch)
      bind       (compile-query-step bind :bind)
@@ -315,6 +366,8 @@ constructed triples.
 - Annotation
 - Adding of provenance data
 - Graph transformation (in combination w/ =:describe=)
+
+***** Query spec keys
 
 | *Key*      | *Value(s)*                | *Description*                                      | *Required* |
 |------------+---------------------------+----------------------------------------------------+------------|
@@ -421,11 +474,11 @@ query spec.
              #{} (keys vars)))))))
 #+END_SRC
 
-*** Sub queries
+*** Sub-queries
 
-Every query spec must contain a =:query= key which is a vector or seq
-of subqueries and which themselves are maps. The engine currently
-supports the following subquery types:
+Every main query spec must contain a =:query= key which is a vector or
+seq of subqueries and which themselves are maps. The engine currently
+supports the following sub-query types:
 
 
 | *Type*        | *Key*     | *Options*                   | *Description*                                   |
@@ -435,22 +488,22 @@ supports the following subquery types:
 | union         | :union    | :from :filter :bind :values | add results to existing                         |
 | negation      | :minus    | :from :filter :bind :values | remove results from existing                    |
 
-**** Subquery ordering
+**** Sub-query ordering
 
-*IMPORTANT:* Each subquery *must* specify one or more search patterns
+*IMPORTANT:* Each sub-query *must* specify one or more search patterns
 which are *always* joined in order and are fail fast (i.e. if one
-pattern fails the entire subquery fails). The specified set operation
-(e.g. optional join) is only applied to merge a subquery's result set
+pattern fails the entire sub-query fails). The specified set operation
+(e.g. optional join) is only applied to merge a sub-query's result set
 with the already computed solution. That also means, any query type
 other than a =:where= is potentially meaningless as first (or only)
-subquery: For example, a =:minus= subquery stated as first subquery
+sub-query: For example, a =:minus= sub-query stated as first sub-query
 would attempt to subtract its results from a still empty result set
 and therefore constitute a no-op...
 
 # <<queryopts>>
-**** Query options
+**** Options
 
-Each subquery can define its own filters & variable injections and
+Each sub-query can define its own filters & variable injections and
 other options. These are passed via the options keys listed in the
 above table.
 
@@ -461,7 +514,7 @@ vars and the following helpers allow us to do so.
 
 ***** Example
 
-For example this subquery asks for artists under 25 and injects a new
+For example this sub-query asks for artists under 25 and injects a new
 qvar =?fullname= into each result:
 
 #+BEGIN_SRC clojure
@@ -533,9 +586,9 @@ applied /post/-filtering.
 
 ***** :from (Multi-graph queries)
 
-In order to support multi-graph queries, each subquery can specify its
+In order to support multi-graph queries, each sub-query can specify its
 own graph to act on using the =:from= option. If not specified, the
-subquery inherits the value stated in the main spec.
+sub-query inherits the value stated in the main spec.
 
 #+BEGIN_SRC clojure
   ;; Multigraph example, define two graphs:
@@ -595,7 +648,7 @@ Visualization of the two graphs combined, with the UK graph shown in red:
 
 As discussed above, specifying a =:filter= allows us to constrain the
 solution space of a query, however a filter is always applied *after*
-each subquery and so might have to deal with a large amount of
+each sub-query and so might have to deal with a large amount of
 extraneous results. Whereas a filter can specify arbitrary criteria,
 for some use cases we're only interested in certain qvars taking a
 number of possible constants/values and it would be more efficient to
@@ -641,7 +694,7 @@ option:
         (update-in [:bind] compile-bind-fn)))
 #+END_SRC
 
-**** Subquery implementations
+**** Implementations
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn query-step
@@ -686,7 +739,7 @@ option:
     (query-step qfn thi.ng.trio.query/union q union))
 #+END_SRC
 
-**** Subquery dispatch
+**** Dispatch
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :query-dispatch
@@ -1085,6 +1138,24 @@ for each author:
           (compile-query-step qfn [svars filter] :group-aggregates-simple)))))
 #+END_SRC
 
+*** Query validation
+
+We have seen how various phases of the query compiler define their own
+query spec validators. The following helper function is use to apply
+them. If validation fails, query compilation halts and an
+error/exception is thrown with the error message containing a
+stringified map of explanations/reasons for each failed key.
+
+#+BEGIN_SRC clojure :noweb-ref validators
+  (defn validate
+    [q spec]
+    (try
+      (let [[_ err] (v/validate q spec)]
+        (when err (err/throw! (str "error compiling query: " err))))
+      (catch Exception e
+        (err/throw! (str "error compiling query: " (.getMessage e))))))
+#+END_SRC
+
 ** Lowlevel query functions
 
 The functions in this section do the actual heavy-lifting and together
@@ -1189,7 +1260,7 @@ below.
 
 Better query planning is still an active TODO item. The only step
 towards this so far is the following function, which sorts patterns of
-an single subquery based on a heuristic prioritizing patterns with
+an single sub-query based on a heuristic prioritizing patterns with
 least qvars and therefore producing the most constrained result set.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
@@ -1583,6 +1654,7 @@ Select only grandchildren for given person:
      [thi.ng.common.data.core :as d]
      [thi.ng.common.error :as err]
      [thi.ng.common.data.unionfind :as uf]
+     [thi.ng.validate.core :as v]
      [clojure.set :as set]
      [clojure.core.reducers :as r]))
 
@@ -1593,6 +1665,8 @@ Select only grandchildren for given person:
   <<selectors>>
 
   <<dfs>>
+
+  <<validators>>
 
   <<compiler>>
 
