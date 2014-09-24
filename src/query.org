@@ -1231,9 +1231,12 @@ engine relies on.
 #+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
 
+  (def check-qvar
+    (memoize (fn [x] (re-matches #"^\?.*" (name x)))))
+
   (def qvar?
     "Returns true, if x is a qvar (a symbol prefixed with '?')"
-    (memoize (fn [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))))
+    (fn [x] (and (symbol? x) (check-qvar x))))
 
   (defn auto-qvar?
     "Returns true, if x is an auto-generated qvar
@@ -1273,10 +1276,10 @@ on the options defined for [[http://www.w3.org/TR/sparql11-query/#propertypaths]
 | =[?s [:or p1 p2] ?o]=   | single edge =p1= *or* =p2=           | equivalent to: ={:where [?s p1 ?o]} {:union [?s p2 ?o]}=      |
 
 *Important:* Please note, that property paths are not yet supported by
-the highlevel query engine, but are actively being work on. Currently,
-the first four property path styles can only be directly queried (in
-isolation) using the low-level =select-transitive= function described
-below.
+the highlevel query engine, but are actively being worked on.
+So far, only the first four property path styles can be directly
+queried (in isolation) using the low-level =select-transitive=
+function described further below.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn resolve-path-pattern
@@ -1329,10 +1332,11 @@ below.
 
 ***** Query planning
 
-Better query planning is still an active TODO item. The only step
-towards this so far is the following function, which sorts patterns of
-an single sub-query based on a heuristic prioritizing patterns with
-least qvars and therefore producing the most constrained result set.
+Proper query planning is still an active TODO item. The only step
+towards this so far is the following function, which sorts the
+patterns of an single sub-query based on an heuristic prioritizing
+patterns with the least qvars and therefore producing the most
+constrained, initial result set.
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn sort-patterns

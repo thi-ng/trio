@@ -789,7 +789,7 @@ avoid major rewrite operations.
           (AliasMemoryStore. store aliases))
         (err/illegal-arg! (str "aliases must be both non-nil values: " [p q])))))
 #+END_SRC
-*** Triple graph (WIP)
+*** Triple graph (experimental, incomplete)
 
 Currently highly inefficient (4-5x slower than =PlainMemoryStore=),
 but still thinking this approach of treating triples (incl. with
@@ -887,7 +887,7 @@ joins...
     (let [root (TripleNode. [nil nil nil] nil)]
       (add-node (TripleGraph. {} {} 0) root)))
 #+END_SRC
-**** Old add-statement
+**** Old add-statement (ignore)
 #+BEGIN_SRC clojure
   (add-statement
    [_ [s p o :as t]]
@@ -919,6 +919,7 @@ joins...
 ** Multi-store dataset
 
 *** Type implementation
+
 #+BEGIN_SRC clojure :noweb-ref dataset
   (defrecord PlainDataset [models]
     PStatementAccess
@@ -977,6 +978,7 @@ joins...
 #+END_SRC
 
 *** Constructor
+
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-dataset
     [& {:as models}]
@@ -1089,9 +1091,7 @@ with the =triple-seq-associative= fn.
     ,#+cljs PersistentHashMap
     (as-model [_] (apply plain-store (triple-seq-associative _)))
     ,#+cljs PersistentArrayMap
-    ,#+cljs (as-model [_] (apply plain-store (triple-seq-associative _)))
-    
-    )
+    ,#+cljs (as-model [_] (apply plain-store (triple-seq-associative _))))
 #+END_SRC
 
 ** Complete namespace definition
