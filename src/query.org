@@ -2,8 +2,6 @@
 
 * Namespace: thi.ng.trio.query
 
-** Highlevel query processing
-
 Triplestores not just provide high flexibility in terms of data
 organization and storage, but also for querying purposes. The query
 engine implemented in this namespace is conceptually based on [[http://www.w3.org/TR/sparql11-query][W3C
@@ -12,30 +10,31 @@ entail any RDF specifics or semantics. Datalog (as used by Datomic)
 too is similar in approach and both are essentially based on
 describing & matching patterns in a directed graph.
 
-*** Query engine features
+** Query engine features
 
-| *Feature*                          | *Status*   |
-|------------------------------------+------------|
-| Query planning                     | INPROGRESS |
-| Query compilation                  | DONE       |
-| Subqueries                         | DONE       |
-| Multi-graph queries                | DONE       |
-| Direct query of clj triple seqs    | DONE       |
-| Filtering (per sub-query)          | DONE       |
-| Joins (fail fast)                  | DONE       |
-| Optional joins                     | DONE       |
-| Union (match alternatives)         | DONE       |
-| Subtraction (negation)             | DONE       |
-| Arbitrary-length paths queries     | INPROGRESS |
-| Result graph construction          | DONE       |
-| Result graph extraction            | INPROGRESS |
-| Result var binding injection       | DONE       |
-| Result var aliasing/transformation | DONE       |
-| Result ordering on arbitrary vars  | DONE       |
-| Result grouping                    | DONE       |
-| Result aggregate expressions       | DONE       |
-| Aggregate filters                  | DONE       |
-| Compiler error reporting           | INPROGRESS |
+| *Feature*                            | *Status*   |
+|--------------------------------------+------------|
+| Query planning                       | INPROGRESS |
+| Query compilation                    | DONE       |
+| Sub-queries                          | DONE       |
+| Multi-graph queries                  | DONE       |
+| Direct query of clj triple seqs      | DONE       |
+| Filtering (per sub-query)            | DONE       |
+| Joins (fail fast)                    | DONE       |
+| Optional joins                       | DONE       |
+| Union (match alternatives)           | DONE       |
+| Subtraction (negation)               | DONE       |
+| Async / parallel sub-query execution | TODO       |
+| Arbitrary-length paths queries       | INPROGRESS |
+| Result graph construction            | DONE       |
+| Result graph extraction              | INPROGRESS |
+| Result var binding injection         | DONE       |
+| Result var aliasing/transformation   | DONE       |
+| Result ordering on arbitrary vars    | DONE       |
+| Result grouping                      | DONE       |
+| Result aggregate expressions         | DONE       |
+| Aggregate filters                    | DONE       |
+| Compiler error reporting             | INPROGRESS |
 
 More generally, the overall engine design was guided by:
 
@@ -44,9 +43,43 @@ More generally, the overall engine design was guided by:
 - easy to read syntax, no cryptic symbols
 - use of vanilla Clojure fns for predicates, binding & aggregate fns
 
+** Highlevel query processing
+
+*** Public query API
+
+Currently, the query engine's public API consist of only these two
+functions:
+
+- =compile-query= compiles a query spec
+- =query= executes a query and accepts both pre-compiled queries or
+  raw query specs.
+
+For both functions an exception is thrown if there're any compile
+errors. The query compiler itself is described in detail below.
+
+#+BEGIN_SRC clojure :noweb-ref compiler-api
+  (defn compile-query
+    "Pre-compiles a query spec hashmap into a query function to be
+    executed with `query`. Throws an exception if compilation fails
+    due to illegal args in spec."
+    [q]
+    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
+      (compile-query-step identity q type)
+      (err/illegal-arg! "Unsupported query type")))
+
+  (defn query
+    "Takes a single query spec (raw or compiled) and executes it.
+    Returned result format depends on query type. A failed query
+    either results in nil or an empty collection."
+    [q]
+    (let [res ((if (fn? q) q (compile-query q)) ::empty)]
+      (if (seq res) res)))
+#+END_SRC
+
 *** Introductory examples
 
-To introduce some of the query engine features, let's define a small graph of relationships:
+To introduce some of the query engine features, let's define a small
+graph of relationships:
 
 #+NAME: example-graph-table
 | *Subject* | *Predicate* | *Object* |
@@ -64,6 +97,9 @@ To introduce some of the query engine features, let's define a small graph of re
 | emily     | nick        | em       |
 | donald    | friend      | emily    |
 
+We can visualize this table with the following Graphviz snippet
+(utilizing some Elisp helper functions defined in [[libraryofbabel.org]]:
+
 #+BEGIN_SRC dot :noweb yes :file ../assets/query-example01.png :exports results
   digraph G {
     node[color="black",style="filled",fontname="Inconsolata",fontcolor="white",fontsize=11];
@@ -75,7 +111,8 @@ To introduce some of the query engine features, let's define a small graph of re
 [[../assets/query-example01.png]]
 
 In Clojure this graph could be defined like this (using a hashmap is
-just one option, see [[file:core.org][Clojure collection conversion in core ns]]):
+just one option (see [[file:core.org][Clojure collection conversion in trio.core
+namespace]]).
 
 #+BEGIN_SRC clojure
   (require '[thi.ng.trio.core :refer :all])
@@ -122,14 +159,18 @@ of inferred facts based on the following rules (of course these
 wouldn't stand up in the real world, but let's ignore that point on
 this occasion):
 
-1. for every =?f= father of =?c= and where =?m= spouse of =?f=, we declare =?m= mother of =?c=
-2. for every =?m= mother of =?c= and where =?f= spouse of =?m=, we declare =?f= father of =?c=
-3. for every =?f= father of =?c= and =?m= mother of =?c=, we declare =?f= spouse =?m= (and vice versa)
+1. for every =?f= father of =?c= and where =?m= spouse of =?f=, we
+   declare =?m= mother of =?c=
+2. for every =?m= mother of =?c= and where =?f= spouse of =?m=, we
+   declare =?f= father of =?c=
+3. for every =?f= father of =?c= and =?m= mother of =?c=, we declare
+   =?f= spouse =?m= (and vice versa)
 4. declare a new =parent= relationship for each father/mother
 5. assign gender information for each parent
 6. declare a new =child-of= relationship for each child
 
-In order to create these new facts we can use a =:construct= type query and we will also compile it first:
+In order to create these new facts we can use a =:construct= type
+query and we will also compile it first:
 
 #+BEGIN_SRC clojure
   (def infer-parents
@@ -153,11 +194,17 @@ In order to create these new facts we can use a =:construct= type query and we w
   ;;   [bob father emily] [alice spouse carl] [carl gender male] [freya parent emily]}
 #+END_SRC
 
-Now we can add these inferred triples to our graph and test it:
+Now we can add these inferred triples to our graph and test it.
+
+*Note:* Graphs have set-like semantics and only store unique triples.
+So even though our =:construct= query produces some triples which are
+already in the graph, no duplicates will be added.
 
 #+BEGIN_SRC clojure
+  ;; build new graph with inferred triples
   (def g2 (add-bulk g (q/query infer-parents)))
 
+  ;; select all parents from new graph and group by child
   (q/query {:select :* :from g2 :query [{:where '[[?p parent ?c]]}] :group '?c})
 
   ;; => {emily [{?p bob, ?c emily} {?p freya, ?c emily}], donald [{?p carl, ?c donald} {?p alice, ?c donald}]}
@@ -182,40 +229,16 @@ either a subject or object.
   ;;      [donald friend emily] [freya mother emily] [freya parent emily] [bob parent emily] [bob father emily]}
 #+END_SRC
 
-The extracted sub-graph defined by the result triples (edges in red are the matched query terms):
+The extracted sub-graph defined by the result triples (edges in red
+are the matched query terms):
 
 [[../assets/query-example03.png]]
 
-** Public query API
-
-Currently, the query engine's public API consist of only these two
-functions:
-
-- =compile-query= compiles a query spec
-- =query= executes a query and accepts both pre-compiled queries or
-  raw query specs.
-
-For both functions an exception is thrown if there're any compile
-errors.
-
-#+BEGIN_SRC clojure :noweb-ref compiler-api
-  (defn compile-query
-    [q]
-    (if-let [type (some #{:select :ask :construct :describe} (keys q))]
-      (compile-query-step identity q type)
-      (err/illegal-arg! "Unsupported query type")))
-
-  (defn query
-    [q]
-    (let [res ((if (fn? q) q (compile-query q)) ::empty)]
-      (if (seq res) res)))
-#+END_SRC
-
 ** Query compiler
 
-The role of the query compiler is to analyze and translate query specs
-(plain hashmaps) into actual working code, as well as to reduce
-pre-processing and optimize code paths for repetitive queries.
+The role of the query compiler is to validate, analyze and translate
+query specs (plain hashmaps) into actual working code, as well as to
+reduce pre-processing and optimize code paths for repetitive queries.
 
 As shown in the above examples, the query engine supports several
 query types, all of which are described in further detail below.
@@ -241,13 +264,13 @@ is used internally as sentinel to distinguish the initially empty
 result set from an earlier failed search (where results are =nil= or
 an empty seq).
 
-Before discussing the compilation steps in detail we first define and
-take a look at the various query types and their options:
+Before discussing the compilation steps in detail, we first define and
+take a look at the various top-level query types and their options:
 
 *** Main query types
 **** Query type: SELECT
 
-*Purpose:* Match patterns in graph, return sequence of all found
+*Purpose:* Matches patterns in graph, returns sequence of all found
 solutions. Each solution is a map of unique qvar bindings.
 
 *Use cases:*
@@ -262,9 +285,12 @@ solutions. Each solution is a map of unique qvar bindings.
 |             |                            | (See [[var-projection][Result var projection]])                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y/N        |
-|             |                            | (only mandatory if any sub-query doesn't provide its own =:from=)   |            |
+|             |                            | (only mandatory if any sub-query doesn't provide its own =:from=)  |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[Sub queries]])                 | Y          |
+|-------------+----------------------------+--------------------------------------------------------------------+------------|
+| :async      | true                       | If true, execute sub-queries asynchronously in parallel             | N          |
+|             |                            | *Note:* Not yet implemented                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :bind       | fn or bindings map         | Inject/transform qvars in final solutions                          | N          |
 |             |                            | (see [[queryopts][Query options]])                                                |            |
@@ -356,10 +382,11 @@ sub-query dispatch, see below).
 **** Query type: CONSTRUCT
 
 *Purpose:* Matches patterns in graph(s) and binds values to qvars,
-then construct new triples using bound qvars solutions. Returns seq of
+then constructs new triples using bound qvars solutions. Returns set of
 constructed triples.
 
 *Use cases:*
+
 - Rule-based inference
 - Triple mapping/updating
 - Reification
@@ -382,6 +409,8 @@ constructed triples.
 
 Any other options supported by =:select= will be removed from the
 query spec.
+
+***** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :construct-triples
@@ -425,13 +454,18 @@ query spec.
 
 **** Query type: DESCRIBE
 
-*Purpose:* Extract sub-graphs for nodes matched via query.
+*Purpose:* Extracts sub-graph for nodes matched via query. Returns
+sub-graph as set of triples. If used with multiple graphs (defined via
+=:from= in sub-queries), =:describe= queries will return a combined
+result set from all graphs.
 
 *Use cases:*
 
-- REST APIs (resource extraction)
+- REST APIs
+- Sub-graph extraction
+- Selective graph merging
 - Graph partitioning/segmentation
-- Complete removal of resources from graph
+- Complete removal of resources from graph(s)
 
 *Options:*
 
@@ -450,28 +484,29 @@ query spec.
 Any other options supported by =:select= will be removed from the
 query spec.
 
-*Important:* =:describe= queries currently only work with single graph
- queries, i.e. only the default graph specified for =:from= is being
- used to retrieve the final result triples.
+***** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :describe
-    [qfn {:keys [from describe] :as q} _]
-    (let [q (-> q
-                (dissoc :order-asc :order-desc :group :aggregate)
-                (assoc :select :*))
-          qfn (compile-query-step qfn q :select)
-          describe (if (sequential? describe) describe [describe])]
+    [qfn {:keys [describe from query] :as q} _]
+    (let [q        (-> q
+                       (dissoc :order-asc :order-desc :group :aggregate)
+                       (assoc :select :*))
+          qfn      (compile-query-step qfn q :select)
+          describe (if (sequential? describe) describe [describe])
+          graphs   (->> query (map :from) (filter identity) (into #{from}))]
       (fn [res]
         (let [vars (select-keys (accumulate-result-vars (qfn res)) describe)]
           (if (seq vars)
-            (reduce
-             (fn [acc v]
-               (let [vals (vars v)]
-                 (-> acc
-                     (into (mapcat #(api/select from % nil nil) vals))
-                     (into (mapcat #(api/select from nil nil %) vals)))))
-             #{} (keys vars)))))))
+            (reduce-kv
+             (fn [acc _ vals]
+               (reduce
+                (fn [acc from]
+                  (-> acc
+                      (into (mapcat #(api/select from % nil nil) vals))
+                      (into (mapcat #(api/select from nil nil %) vals))))
+                acc graphs))
+             #{} vars))))))
 #+END_SRC
 
 *** Sub-queries
@@ -1154,8 +1189,8 @@ stringified map of explanations/reasons for each failed key.
         (if-not err
           ret
           (err/throw! (str "error compiling query: " err))))
-      (catch Exception e
-        (err/throw! (str "error compiling query: " (.getMessage e))))))
+      (catch #+clj Exception #+cljs js/Error e
+        (err/throw! (str "error compiling query: " #+clj (.getMessage e) #+cljs e)))))
 #+END_SRC
 
 ** Lowlevel query functions
@@ -1170,9 +1205,9 @@ engine relies on.
 #+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
 
-  (defn qvar?
+  (def qvar?
     "Returns true, if x is a qvar (a symbol prefixed with '?')"
-    [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))
+    (memoize (fn [x] (and (symbol? x) (re-matches #"^\?.*" (name x))))))
 
   (defn auto-qvar?
     "Returns true, if x is an auto-generated qvar
@@ -1290,21 +1325,21 @@ least qvars and therefore producing the most constrained result set.
     [[ts tp to] vars varp varo]
     (cond
      (and vars varp varo) (cond
-                           (= ts tp to) (fn [[rs rp ro]] (= rs rp ro))
-                           (= ts tp) (fn [[rs rp ro]] (and (= rs rp) (not= rs ro)))
-                           (= ts to) (fn [[rs rp ro]] (and (= rs ro) (not= rs rp)))
-                           (= tp to) (fn [[rs rp ro]] (and (= rp ro) (not= rs rp)))
+                           (= ts tp to) (fn [r] (= (r 0) (r 1) (r 2)))
+                           (= ts tp) (fn [r] (and (= (r 0) (r 1)) (not= (r 0) (r 2))))
+                           (= ts to) (fn [r] (and (= (r 0) (r 2)) (not= (r 0) (r 1))))
+                           (= tp to) (fn [r] (and (= (r 1) (r 2)) (not= (r 0) (r 1))))
                            :default (constantly true))
-     (and vars varp) (if (= ts tp)
-                       (fn [[rs rp]] (= rs rp))
-                       (fn [[rs rp]] (not= rs rp)))
-     (and vars varo) (if (= ts to)
-                       (fn [[rs _ ro]] (= rs ro))
-                       (fn [[rs _ ro]] (not= rs ro)))
-     (and varp varo) (if (= tp to)
-                       (fn [[_ rp ro]] (= rp ro))
-                       (fn [[_ rp ro]] (not= rp ro)))
-     :default (constantly true)))
+     (and vars varp)      (if (= ts tp)
+                            (fn [r] (= (r 0) (r 1)))
+                            (fn [r] (not= (r 0) (r 1))))
+     (and vars varo)      (if (= ts to)
+                            (fn [r] (= (r 0) (r 2)))
+                            (fn [r] (not= (r 0) (r 2))))
+     (and varp varo)      (if (= tp to)
+                            (fn [r] (= (r 1) (r 2)))
+                            (fn [r] (not= (r 1) (r 2))))
+     :default             (constantly true)))
 #+END_SRC
 
 **** Result handling
@@ -1454,14 +1489,14 @@ least qvars and therefore producing the most constrained result set.
     (if vs?
       (if vp?
         (if vo?
-          (fn [[s' p' o']] {s s' p p' o o'})
-          (fn [[s' p']] {s s' p p'}))
+          (fn [r] {s (r 0) p (r 1) o (r 2)})
+          (fn [r] {s (r 0) p (r 1)}))
         (if vo?
-          (fn [[s' _ o']] {s s' o o'})
-          (fn [r] {s (first r)})))
+          (fn [r] {s (r 0) o (r 2)})
+          (fn [r] {s (r 0)})))
       (if vp?
         (if vo?
-          (fn [[_ p' o']] {p p' o o'})
+          (fn [r] {p (r 1) o (r 2)})
           (fn [r] {p (r 1)}))
         (if vo?
           (fn [r] {o (r 2)})
