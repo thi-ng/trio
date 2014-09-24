@@ -111,7 +111,7 @@ We can visualize this table with the following Graphviz snippet
 [[../assets/query-example01.png]]
 
 In Clojure this graph could be defined like this (using a hashmap is
-just one option (see [[file:core.org][Clojure collection conversion in trio.core
+just one option (see [[core.org][Clojure collection conversion in trio.core
 namespace]]).
 
 #+BEGIN_SRC clojure
@@ -282,18 +282,18 @@ solutions. Each solution is a map of unique qvar bindings.
 | *Key*       | *Value(s)*                 | *Description*                                                      | *Required* |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :select     | :*, qvar(s), map           | Defines which qvars appear in solution                             | Y          |
-|             |                            | (See [[var-projection][Result var projection]])                                        |            |
+|             |                            | (See [[#result-var-projection--final-filtering][Result var projection]])                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y/N        |
 |             |                            | (only mandatory if any sub-query doesn't provide its own =:from=)  |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[Sub queries]])                 | Y          |
+| :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[#sub-queries][Sub-queries]])                 | Y          |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :async      | true                       | If true, execute sub-queries asynchronously in parallel             | N          |
 |             |                            | *Note:* Not yet implemented                                        |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :bind       | fn or bindings map         | Inject/transform qvars in final solutions                          | N          |
-|             |                            | (see [[queryopts][Query options]])                                                |            |
+|             |                            | (see [[#query-options][Query options]])                                                |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :values     | '{?v1 #{a b} ?v2 c ..}     | Pre-bind qvars to given values for all subqueries                  | N          |
 |             |                            | in order to constrain search.                                      |            |
@@ -303,7 +303,7 @@ solutions. Each solution is a map of unique qvar bindings.
 |             |                            | though pre-binding will produce optimized queries                  |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :aggregate  | {?v fn ...}                | Compute aggregate values and inject into solution                  | N          |
-|             |                            | (See [[Result aggregation & grouping]])                                |            |
+|             |                            | (See [[#result-aggregation--grouping][Result aggregation & grouping]])                                |            |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
 | :filter     | (fn [res] ..) or {?v fn..} | Filter final solutions                                             | N          |
 |-------------+----------------------------+--------------------------------------------------------------------+------------|
@@ -403,10 +403,10 @@ constructed triples.
 |------------+---------------------------+----------------------------------------------------+------------|
 | :from      | trio.core/PModel instance | default triplestore to use for all sub-queries     | yes        |
 |------------+---------------------------+----------------------------------------------------+------------|
-| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]]) | yes        |
+| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[#sub-queries][Sub-queries]]) | yes        |
 |------------+---------------------------+----------------------------------------------------+------------|
 | :bind      | fn or bindings map        | inject/transform qvars in final solutions          | no         |
-|            |                           | (see [[queryopts][Query options]])                                |            |
+|            |                           | (see [[#query-options][Query options]])                                |            |
 
 Any other options supported by =:select= will be removed from the
 query spec.
