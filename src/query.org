@@ -477,10 +477,10 @@ result set from all graphs.
 |-----------+---------------------------+------------------------------------------------------------+------------|
 | :from     | trio.core/PModel instance | default triplestore to use for all sub-queries             | yes        |
 |-----------+---------------------------+------------------------------------------------------------+------------|
-| :query    | [{sub-query} ...]         | seq of any number of sub-queries (see [[Sub queries]])         | yes        |
+| :query    | [{sub-query} ...]         | seq of any number of sub-queries (see [[#sub-queries][Sub queries]])         | yes        |
 |-----------+---------------------------+------------------------------------------------------------+------------|
 | :bind     | fn or bindings map        | inject/transform qvars in final solutions                  | no         |
-|           |                           | (see [[queryopts][Query options]])                                        |            |
+|           |                           | (see [[#query-options][Query options]])                                        |            |
 
 Any other options supported by =:select= will be removed from the
 query spec.

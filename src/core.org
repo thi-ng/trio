@@ -23,6 +23,10 @@ below.
 
 *** PModel
 
+This protocol defines various accessors & predicate fns which must be
+implemented by a triple store in order to allow the [[query.org][trio query engine]]
+to act on it.
+
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PModel
     (select [_] [_ s p o] [_ g s p o])
@@ -36,16 +40,61 @@ below.
     (model-size [_]))
 #+END_SRC
 
+The =select= method is plays the main role here and is used to perform
+low-level pattern match queries on a triplestore. Given any
+combination of subject, predicate or object, the method performs a
+search and returns all matching triples. The overall contract is that
+if any SPO arg is =nil=, then this triple element matches anything.
+Hence, there're eight possible variations to match triples:
+
+#+BEGIN_SRC clojure
+  ;; match all triples
+  (select store nil nil nil)
+
+  ;; match all triples w subject = :s
+  (select store :s nil nil)
+
+  ;; match all triples w/ pred = :p
+  (select store nil :p nil)
+
+  ;; match all triples w/ obj = :o
+  (select store nil nil :o)
+
+  ;; match all triples w/ subj = :s AND pred = :p
+  (select store :s :p nil)
+
+  ;; match all triples w/ subj= :s AND obj = :o
+  (select store :s nil :o)
+
+  ;; match all triples w/ pred = :p AND obj = :o
+  (select store nil :p :o)
+
+  ;; match only given triple [:s :p :o]
+  (select store :s :p :o)
+#+END_SRC
+
 *** PDataset
+
+In trio terminology, a dataset constitutes a triplestore, which
+logically combines a number of other (independent) =PModel=
+implementations. =PDataset= implementations *must* provide a =PModel=
+implementation too and any queries run over a dataset will produce a
+combined result from all included models. In addition, a dataset
+*must* provide a =select= implementation with an extra graph arg to
+directly query a specific model, rather than all.
 
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PDataset
     (remove-model [_ id])
-    (update-model [_ id f])
+    (update-model [_ id m])
     (get-model [_ id]))
 #+END_SRC
 
 *** PStatementAccess
+
+This protocol defines accessors to add, update and remove triples from
+a store. Bulk operations are defined, in order to allow optimized
+implementations relying on connections to external storage layers.
 
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PStatementAccess
@@ -58,6 +107,11 @@ below.
 #+END_SRC
 
 *** PAliasModelSupport
+
+This is an experimental feature to support triplestore implementations
+which allow the aliasing/renaming of individual triple elements and
+provide potentially optimized solutions. See [[#store-with-alias-support][Store with alias support]]
+for more details.
 
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PAliasModelSupport
@@ -97,6 +151,29 @@ below.
 #+END_SRC
 
 ** Triple datatype
+
+The triplestore implementations defined in this namespace use a
+custom/optimized 3-element vector type to store triples internally.
+This =Triple= type can be used like a normal vector since it
+implements all necessary Clojure protocols. In addition to using
+numeric indices (0..2) to refer to elements, the keywords =:s=, =:p=
+and =:o= can be used alternatively. Furthermore, the =Triple= type
+supports swizzling to look up, edit and/or change the order of elements:
+
+#+BEGIN_SRC clojure
+  (def t (triple 'karsten 'nickname 'toxi))
+
+  (:s t)   ; => karsten
+  (:p t)   ; => nickname
+  (:o t)   ; => toxi
+  (:so t)  ; => [karsten toxi]
+  (:ops t) ; => [toxi nickname karsten]
+
+  (assoc t :p 'same-as)        ; => [karsten same-as toxi]
+  (assoc t :po '[author trio]) ; => [karsten author trio]
+  (assoc t :op '[trio author]) ; => [karsten author trio]
+#+END_SRC
+
 *** Templates
 
 In order to deduplicate shared code between both the Clojure &
@@ -514,6 +591,7 @@ of the code.
 ** In-memory stores
 
 *** Classic 3-index implementation
+
 #+BEGIN_SRC clojure :noweb-ref memstore
   (defrecord PlainMemoryStore [spo pos osp size]
     PStatementAccess

@@ -6,22 +6,23 @@
 ** Overview
 
 This project provides a simple, yet extensible and datatype agnostic
-[[http://en.wikipedia.org/wiki/Triplestore][triple store]] API and powerful [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for
+[[http://en.wikipedia.org/wiki/Triplestore][triplestore]] API and powerful [[http://en.wikipedia.org/wiki/SPARQL][SPARQL]]-like query engine for
 Clojure/ClojureScript. This library is the result of extracting &
 refactoring non-RDF related functionality from the upcoming
 *thi.ng/sema* toolkit and so making the underlying graph tools more
 accessible to a wider audience. The library is developed in a literal
 programming format and contains many examples and extensive
-documentation for all parts.
+documentation for all parts. A test suite is being worked on too.
 
 Triple stores are usually associated with [[http://en.wikipedia.org/wiki/Semantic_web][Semantic Web]] & [[http://en.wikipedia.org/wiki/Linked_Data][Linked Data]]
 applications, however encoding data as triples is natural & useful too
 for a large number of other use cases and this library is aiming to
-address some of these. Altough currently only an in-memory store is
-available, the intention is to have a pluggable storage layer (a bit
-like Datomic). Some prototype implementations for Redis, CouchDB &
-Cassandra have been in development since last year (but currently
-stalled due to other priorities).
+address some of these. Although currently only a couple of in-memory
+stores are available, the intention is to eventually offer a pluggable
+storage layer (a bit like Datomic). Some prototype implementations for
+Redis, CouchDB & Cassandra have been in development since last year
+(but currently stalled due to other priorities). The aim is to develop
+& bundle these in isolation as separate support libs for trio.
 
 ** Status
 
@@ -29,8 +30,9 @@ ALPHA quality, subject to frequent changes until further notice.
 
 ** Example usage
 
-The [[file:query.org][query engine namespace]] is currently the best source of information
-and concrete usage examples. Please take a look!
+The [[query.org][query engine namespace]] and growing [[../test/][test suite]] is currently the
+best source of information and concrete usage examples. Please take a
+look!
 
 ** License
 
@@ -99,6 +101,11 @@ target/trio-<<version>>.js
 | *Name*          | *Role*                          | *Website*                  |
 |-----------------+---------------------------------+----------------------------|
 | [[k@thi.ng][Karsten Schmidt]] | initiator & principal developer | http://postspectacular.com |
+
+I've got a fairly detailed roadmap and task list to implement over the
+coming months, but am always happy to receive feedback & suggestions
+and have issues filed. Once the core engine is more refined I'll be
+gladly welcoming other contributions. Thanks for understanding!
 
 ** Release history
 
