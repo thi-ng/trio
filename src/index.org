@@ -74,6 +74,10 @@ target/trio-<<version>>.js
 #+BEGIN_SRC clojure :noweb-ref dep-validate
 [thi.ng/validate "0.1.0-SNAPSHOT"]
 #+END_SRC
+**** [[https://github.com/clojure/data.csv][data.csv]]
+#+BEGIN_SRC clojure :noweb-ref dep-csv
+[org.clojure/data.csv "0.1.2"]
+#+END_SRC
 *** Development
 **** [[https://github.com/cemerick/austin][Austin]]
 #+BEGIN_SRC clojure :noweb-ref dep-austin
@@ -172,7 +176,8 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
               :url "http://www.apache.org/licenses/LICENSE-2.0"}
     :dependencies [<<dep-clj>>
                    <<dep-common>>
-                   <<dep-validate>>]
+                   <<dep-validate>>
+                   <<dep-csv>>]
 
     :source-paths ["src/cljx"]
     :test-paths ["<<gen-test-path>>"]
