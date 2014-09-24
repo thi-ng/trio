@@ -824,13 +824,20 @@ option:
 
 All top-level query types are based on an initial =:select= query and
 result variable projection & filtering is the final transformation
-step of a =:select=. During this phase the engine does the following:
+step of a =:select=. During this phase the engine does the following
+(in this order):
 
-- any qvars not requested by the user (but which are present in the solutions) are removed
-- any qvars with aliasing or transformation fns are renamed/processed
-- result seq is transformed into a map when =:group= is enabled (optional)
-- aggregation functions are run (optional)
-- results are passed through top-level filter (optional)
+1. result seq is transformed into a map when =:group= is enabled
+   (optional)
+2. aggregation functions are run (optional)
+3. results are passed through top-level filter (optional)
+4. any qvars not requested by the user (but which are present in the
+   solutions) are removed
+5. any qvars with aliasing or transformation fns are renamed/processed
+
+*Important:* This processing order implies that any top-level filters
+can only be applied to "normal" or aggregated qvars (i.e. not their
+renamed/transformed versions).
 
 **** Result var aliasing & transformation
 
@@ -897,7 +904,7 @@ calculate their retail price incl. taxes:
 
 #+BEGIN_SRC clojure
   (q/query
-   {:select ['?b '{?net ?p, '?retail {:use '?p :fn #(* 1.2 %)}}]
+   {:select ['?b {'?net '?p, '?retail {:use '?p :fn #(* 1.2 %)}}]
     :from ds
     :query '[{:where [[?a :author ?b] [?b :price ?p]]}]
     :filter {'?p #(< % 20)}})
