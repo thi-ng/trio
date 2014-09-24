@@ -371,6 +371,7 @@ sub-query dispatch, see below).
     [qfn {:keys [select bind order-asc order-desc] :as q} _]
     (prn :select select)
     (validate q validator-select)
+    (validate {:from (collect-source-graphs q)} {:from (v/required)})
     (cond->
      (compile-query-step qfn q :query-dispatch)
      bind       (compile-query-step bind :bind)
@@ -488,13 +489,13 @@ query spec.
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :describe
-    [qfn {:keys [describe from query] :as q} _]
+    [qfn {:keys [describe] :as q} _]
     (let [q        (-> q
                        (dissoc :order-asc :order-desc :group :aggregate)
                        (assoc :select :*))
           qfn      (compile-query-step qfn q :select)
           describe (if (sequential? describe) describe [describe])
-          graphs   (->> query (map :from) (filter identity) (into #{from}))]
+          graphs   (collect-source-graphs q)]
       (fn [res]
         (let [vars (select-keys (accumulate-result-vars (qfn res)) describe)]
           (if (seq vars)
@@ -1059,6 +1060,10 @@ for each author:
 
 **** Implementation
 
+The following functions and compiler steps are used to produce
+optimized code paths based on the analysis of qvars selected for
+projection, both for grouped & ungrouped results.
+
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn compile-group-fn
     [group]
@@ -1183,10 +1188,17 @@ for each author:
 *** Query validation
 
 We have seen how various phases of the query compiler define their own
-query spec validators. The following helper function is use to apply
+query spec validators. The following helper functions are used to apply
 them. If validation fails, query compilation halts and an
 error/exception is thrown with the error message containing a
 stringified map of explanations/reasons for each failed key.
+
+#+BEGIN_SRC clojure
+  ;; failed validation example
+  (q/query {:select :* :query [{:where '[[?a author ?b]]}]})
+
+  ;; => IllegalArgumentException error compiling query: {:from ("is required")}
+#+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref validators
   (defn validate
@@ -1195,9 +1207,15 @@ stringified map of explanations/reasons for each failed key.
       (let [[ret err] (v/validate q spec)]
         (if-not err
           ret
-          (err/throw! (str "error compiling query: " err))))
+          (err/throw! (str "Error compiling query: " err))))
       (catch #+clj Exception #+cljs js/Error e
-        (err/throw! (str "error compiling query: " #+clj (.getMessage e) #+cljs e)))))
+        (err/throw! #+clj (.getMessage e) #+cljs e))))
+#+END_SRC
+
+**** Validation helpers
+
+#+BEGIN_SRC clojure :noweb-ref validators
+  
 #+END_SRC
 
 ** Lowlevel query functions
@@ -1209,6 +1227,7 @@ engine relies on.
 
 *** Helpers
 **** Query variables
+
 #+BEGIN_SRC clojure :noweb-ref helpers
   (def ^:dynamic *auto-qvar-prefix* "?__q")
 
@@ -1229,7 +1248,15 @@ engine relies on.
     [x] (-> x name (subs 1)))
 #+END_SRC
 
+**** Data sources
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn collect-source-graphs
+    [q] (->> q (map :from) (into #{(:from q)}) (filter identity)))
+#+END_SRC
+
 **** Query pattern resolution & handling
+
 ***** Specifying variable length paths
 
 The table below provides an overview of possible property paths which
