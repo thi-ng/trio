@@ -2,7 +2,7 @@
 
 * thi.ng.trio.test.core
 
-** Main tests
+** Triplestore tests
 
 #+BEGIN_SRC clojure :noweb-ref tests
   (def g1

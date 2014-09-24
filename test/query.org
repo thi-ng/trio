@@ -1,0 +1,53 @@
+#+SETUPFILE: "../src/setup.org"
+
+* thi.ng.trio.test.query
+
+** Lowlevel query tests
+
+#+BEGIN_SRC clojure :noweb-ref tests
+  (def g1
+    '[[[alice bob carl] friend ed]
+      [alice mother [fred gemma]]
+      [bob father fred]
+      [gemma mother henry]
+      [fred father [inigo james]]])
+
+  (defn select-and-accumulate
+    [ds bind opts pattern]
+    (->> pattern
+         (q/select-with-bindings ds bind opts)
+         (q/accumulate-result-vars)))
+
+  (deftest accu-res-vars
+    (let [acc (q/accumulate-result-vars '({:a 23 :b 42 :c 66} {:a 42 :b 23 :c 66}))]
+      (is (= #{23 42} (:a acc)))
+      (is (= #{23 42} (:b acc)))
+      (is (= #{66}    (:c acc)))))
+
+  (deftest select-with-bindings
+    (let [ds (api/as-model g1)
+          acc1 (select-and-accumulate ds {} {} '[?a friend ?b])
+          acc2 (select-and-accumulate ds '{?a alice} {} '[?a friend ?b])
+          acc3 (select-and-accumulate ds '{?a #{alice bob} ?b #{ed henry}} {} '[?a friend ?b])]
+      (is (and (= '#{alice bob carl} (acc1 '?a)) (= '#{ed} (acc1 '?b))))
+      (is (and (= '#{alice} (acc2 '?a)) (= '#{ed} (acc2 '?b))))
+      (is (and (= '#{alice bob} (acc3 '?a)) (= '#{ed} (acc3 '?b))))))
+#+END_SRC
+
+** Namespace declaration
+
+#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/query.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.test.query
+    ,#+cljs
+    (:require-macros
+     [cemerick.cljs.test :refer [is deftest with-test testing]])
+    (:require
+     [thi.ng.validate.core]
+     [thi.ng.trio.core :as api]
+     [thi.ng.trio.query :as q]
+     [thi.ng.common.data.unionfind :as u]
+     ,#+clj  [clojure.test :refer :all]
+     ,#+cljs [cemerick.cljs.test :as t]))
+
+  <<tests>>
+#+END_SRC
