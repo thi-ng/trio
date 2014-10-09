@@ -212,7 +212,7 @@ of the code.
            ({{fn}} p (.-p ^Triple x))
            ({{fn}} o (.-o ^Triple x)))
       (and (instance? java.util.Collection x)
-           (= 3 (count x))
+           (== 3 (count x))
            ({{fn}} s (nth x 0))
            ({{fn}} p (nth x 1))
            ({{fn}} o (nth x 2))))")
@@ -564,10 +564,10 @@ of the code.
     (let [n (name k)
           c (count n)]
       (if (and (<= c (count keymap)) (== c (count v) (count (into #{} n))))
-        (loop [acc (object-array 3), i 0, n n]
+        (loop [acc (vec _), i 0, n n]
           (if n
-            (recur (do (aset acc (keymap (first n)) (v i)) acc) (inc i) (next n))
-            (Triple. (aget acc 0) (aget acc 1) (aget acc 2) nil)))
+            (recur (assoc acc (keymap (first n)) (v i)) (inc i) (next n))
+            (Triple. (acc 0) (acc 1) (acc 2) nil)))
         (err/key-error! k))))
 
   (defn- swizzle-assoc
