@@ -1238,7 +1238,7 @@ engine relies on.
   (defn auto-qvar?
     "Returns true, if x is an auto-generated qvar
     (a symbol prefixed with *auto-qvar-prefix*)"
-    [x] (and (symbol? x) (zero? (.indexOf ^String (name x) *auto-qvar-prefix*))))
+    [x] (and (symbol? x) (zero? (.indexOf ^String (name x) ^String *auto-qvar-prefix*))))
 
   (defn auto-qvar
     "Creates a new auto-named qvar (symbol)."
@@ -1475,7 +1475,7 @@ constrained, initial result set.
   (defn join
     [a b]
     (->> (set/join a b)
-         (mapcat
+         #_(mapcat
           (fn [k]
             (if (unique-bindings? k)
               [k])))))
