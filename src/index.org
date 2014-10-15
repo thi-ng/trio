@@ -78,6 +78,10 @@ target/trio-<<version>>.js
 #+BEGIN_SRC clojure :noweb-ref dep-csv
 [org.clojure/data.csv "0.1.2"]
 #+END_SRC
+**** [[https://github.com/ptaoussanis/timbre][timbre]]
+#+BEGIN_SRC clojure :noweb-ref dep-timbre
+[com.taoensso/timbre "3.3.1"]
+#+END_SRC
 *** Development
 **** [[https://github.com/cemerick/austin][Austin]]
 #+BEGIN_SRC clojure :noweb-ref dep-austin
@@ -183,7 +187,8 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
     :dependencies [<<dep-clj>>
                    <<dep-common>>
                    <<dep-validate>>
-                   <<dep-csv>>]
+                   <<dep-csv>>
+                   <<dep-timbre>>]
 
     :source-paths ["src/cljx"]
     :test-paths   ["<<gen-test-path>>"]

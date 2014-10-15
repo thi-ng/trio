@@ -344,7 +344,8 @@ sub-query dispatch, see below).
     {:select    (v/alts
                  [(v/symbol) (v/keyword) (v/sequential)]
                  "must be a qvar, keyword or seq")
-     :from      (v/optional
+     ,#+clj
+     :from      #+clj (v/optional
                  (v/alts
                   [(v/sequential) (v/satisfies api/PModel)]
                   "must satisfy the thi.ng.trio.core.PModel protocol"))
@@ -369,7 +370,7 @@ sub-query dispatch, see below).
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :select
     [qfn {:keys [select bind order-asc order-desc] :as q} _]
-    (prn :select select)
+    ,#+clj (debug :select select)
     (validate q validator-select)
     (validate {:from (collect-source-graphs q)} {:from (v/required)})
     (cond->
@@ -744,7 +745,7 @@ option:
 
   (defmethod compile-query-step :join
     [qfn {:keys [from values where] :as q} _]
-    (prn :join where values)
+    ,#+clj (debug :join where values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
@@ -756,7 +757,7 @@ option:
 
   (defmethod compile-query-step :minus
     [qfn {:keys [from values minus] :as q} _]
-    (prn :minus minus values)
+    ,#+clj (debug :minus minus values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
@@ -766,12 +767,12 @@ option:
 
   (defmethod compile-query-step :optional
     [qfn {:keys [from values optional] :as q} _]
-    (prn :join-opt optional values)
+    ,#+clj (debug :join-opt optional values)
     (query-step qfn join-optional q optional))
 
   (defmethod compile-query-step :union
     [qfn {:keys [from values union] :as q} _]
-    (prn :union union values)
+    ,#+clj (debug :union union values)
     (query-step qfn thi.ng.trio.query/union q union))
 #+END_SRC
 
@@ -780,7 +781,7 @@ option:
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :query-dispatch
     [qfn {:keys [from values query]} _]
-    (prn :query-dispatch query)
+    ,#+clj (debug :query-dispatch query)
     (loop [qfn qfn, query query]
       (if query
         (let [q (first query)
@@ -805,18 +806,18 @@ option:
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :bind
     [qfn bind _]
-    (prn :bindings bind)
+    ,#+clj (debug :bindings bind)
     (let [bind (compile-bind-fn bind)]
       (fn [res] (map bind (qfn res)))))
 
   (defmethod compile-query-step :order-asc
     [qfn order _]
-    (prn :order-asc order)
+    ,#+clj (debug :order-asc order)
     (fn [res] (order-asc order (qfn res))))
 
   (defmethod compile-query-step :order-desc
     [qfn order _]
-    (prn :order-desc order)
+    ,#+clj (debug :order-desc order)
     (fn [res] (order-desc order (qfn res))))
 #+END_SRC
 
@@ -962,7 +963,7 @@ calculate their retail price incl. taxes:
 
   (defmethod compile-query-step :project-vars
     [qfn {:keys [select group aggregate filter] :as q} _]
-    (prn :project-vars select)
+    ,#+clj (debug :project-vars select)
     (let [select     (if (sequential? select) select [select])
           svars      (selected-var-keys select)
           catch-all? (svars :*)
@@ -1116,25 +1117,25 @@ projection, both for grouped & ungrouped results.
 
   (defmethod compile-query-step :project-vars-aggregates
     [qfn [avars svars filter] _]
-    (prn :aggregates-only avars filter)
+    ,#+clj (debug :aggregates-only avars filter)
     (let [project-fn (project-aggregates-only avars svars filter)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-mixed
     [qfn [avars svars all? flt] _]
-    (prn :mixed-aggregates avars svars all? flt)
+    ,#+clj (debug :mixed-aggregates avars svars all? flt)
     (let [project-fn (project-aggregates-mixed avars svars all? flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-simple
     [qfn [vars flt] _]
-    (prn :simple-aggregates vars flt)
+    ,#+clj (debug :simple-aggregates vars flt)
     (let [project-fn (project-aggregates-simple vars flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-all
     [qfn flt _]
-    (prn :all-aggregates flt)
+    ,#+clj (debug :all-aggregates flt)
     (let [project-fn (project-aggregates-all flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
@@ -1149,31 +1150,31 @@ projection, both for grouped & ungrouped results.
 
   (defmethod compile-query-step :group-aggregates-only
     [qfn [avars svars filter] _]
-    (prn :aggregates-only avars filter)
+    ,#+clj (debug :aggregates-only avars filter)
     (let [project-fn (project-aggregates-only avars svars filter)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-mixed
     [qfn [avars svars all? flt] _]
-    (prn :mixed-aggregates avars svars all? flt)
+    ,#+clj (debug :mixed-aggregates avars svars all? flt)
     (let [project-fn (project-aggregates-mixed avars svars all? flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-simple
     [qfn [vars flt] _]
-    (prn :simple-aggregates vars flt)
+    ,#+clj (debug :simple-aggregates vars flt)
     (let [project-fn (project-aggregates-simple vars flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-all
     [qfn flt _]
-    (prn :all-aggregates flt)
+    ,#+clj (debug :all-aggregates flt)
     (let [project-fn (project-aggregates-all flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :project-groups
     [qfn [group aggregate svars filter agg-only? catch-all?] _]
-    (prn :project-groups group aggregate)
+    ,#+clj (debug :project-groups group aggregate)
     (let [group (compile-group-fn group)
           qfn   (fn [res] (group-by group (qfn res)))]
       (if (seq aggregate)
@@ -1558,7 +1559,6 @@ constrained, initial result set.
   (defn select-with-bindings
     [ds bindings opts [s p o :as t]]
     (let [patterns (produce-patterns-with-bound-vars t bindings)
-          _        (prn :patterns patterns)
           vs?      (qvar? s), vp? (qvar? p), vo? (qvar? o)
           vmap     (bind-translator vs? vp? vo? t)
           pmap     (unbound-vars-translator bindings vs? vp? vo? t)
@@ -1569,10 +1569,11 @@ constrained, initial result set.
                         (let [vbinds (vmap %)]
                           (if (flt vbinds) vbinds)))
                      #(if (verify %) (vmap %)))]
+      ,#+clj (debug :patterns patterns)
       (loop [acc (transient []), ps patterns]
         (if ps
           (let [[qs qp qo] (pmap (vec (first ps)))
-                _   (prn :select qs qp qo)
+                ,#+clj _ #+clj (debug :select qs qp qo)
                 res (api/select ds qs qp qo)]
             (if (seq res)
               (recur
@@ -1728,7 +1729,8 @@ Select only grandchildren for given person:
      [thi.ng.common.data.unionfind :as uf]
      [thi.ng.validate.core :as v]
      [clojure.set :as set]
-     [clojure.core.reducers :as r]))
+     [clojure.core.reducers :as r]
+     ,#+clj [taoensso.timbre :refer [debug info warn error]]))
 
   <<helpers>>
 
