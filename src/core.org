@@ -9,6 +9,18 @@ at once.
 
 ** Protocol definitions
 
+*** PTripleSeq
+
+This protocol is used to easily convert Clojure collections into a
+triple sequence. Implementations are provided for sequences & maps
+further below. This protocol is also used by the =PModelConvert=
+implementations.
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PTripleSeq
+   (triple-seq [_]))
+#+END_SRC
+
 *** PModelConvert
 
 This protocol is used to easily convert Clojure collections into an
@@ -987,13 +999,17 @@ joins...
 
 ** Clojure collection conversion
 
-Using the =PModelConvert= protocol defined above, we can provide a
-mechanism to automatically convert Clojure collections into a
-triplestore. Of course, such an approach will involve some assumptions
-about the internal structure of these collections, but the
-implementations below are quite flexible and allow for very succinct
-definitions of graph structures by specifying shared subjects,
-predicates or objects within a given triple pattern.
+Using the =PTripleSeq= and =PModelConvert= protocols defined above, we
+can provide a mechanism to automatically convert Clojure collections
+into triple seqs or a triplestore. Of course, such an approach will
+involve some assumptions about the internal structure of these
+collections, but the implementations below are quite flexible and
+allow for very succinct definitions of graph structures by specifying
+shared subjects, predicates or objects within a given triple pattern.
+The =PModelConvert= simply wraps the =PTripleSeq= implementation and
+produces a new =PlainMemoryStore= with the supplied triples.
+
+*Note:* The triple seqs produced are all lazy (using =mapcat=).
 
 *** Maps
 
@@ -1026,7 +1042,7 @@ The map converter then simply flattens each SP tuple:
      (fn [[s v]]
        (mapcat
         (fn [[p o]]
-          (if (coll? o)
+          (if (sequential? o)
             (mapv (fn [o] [s p o]) o)
             [[s p o]]))
         v))
@@ -1060,12 +1076,11 @@ with the =triple-seq-associative= fn.
 
 #+BEGIN_SRC clojure :noweb-ref convert
   (defn triple-seq-sequential
-
    [coll]
    (mapcat
     (fn [triple]
       (if (map? triple)
-        (triple-seq-associative triple)
+        (triple-seq triple)
         (->> triple
              (map #(if (sequential? %) % [%]))
              (apply d/cartesian-product))))
@@ -1075,8 +1090,23 @@ with the =triple-seq-associative= fn.
 *** Protocol implementations
 
 #+BEGIN_SRC clojure :noweb-ref convert
-  (extend-protocol PModelConvert
+  (extend-protocol PTripleSeq
+      ,,#+clj  clojure.lang.Sequential
+      ,,#+cljs PersistentVector
+      (triple-seq [_] (triple-seq-sequential _))
+      ,,#+cljs List
+      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
+      ,,#+cljs LazySeq
+      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
+      ,,#+cljs IndexedSeq
+      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
+      ,,#+clj  clojure.lang.IPersistentMap
+      ,,#+cljs PersistentHashMap
+      (triple-seq [_] (triple-seq-associative _))
+      ,,#+cljs PersistentArrayMap
+      ,,#+cljs (triple-seq [_] (triple-seq-associative _)))
 
+  (extend-protocol PModelConvert
     ,#+clj  clojure.lang.Sequential
     ,#+cljs PersistentVector
     (as-model [_] (apply plain-store (triple-seq-sequential _)))
@@ -1086,7 +1116,6 @@ with the =triple-seq-associative= fn.
     ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
     ,#+cljs IndexedSeq
     ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
-
     ,#+clj  clojure.lang.IPersistentMap
     ,#+cljs PersistentHashMap
     (as-model [_] (apply plain-store (triple-seq-associative _)))

@@ -12,8 +12,21 @@
       [gemma mother henry]
       [fred father [inigo james]]])
 
+  (defrecord Foo [x y]
+    api/PTripleSeq
+    (triple-seq [_] (api/triple-seq {x {:p y} y {:q x}})))
+
   (defn select-set
     [ds & [s p o]] (set (api/select ds s p o)))
+
+  (deftest record-conversions
+    (let [foo (Foo. 23 42)
+          bar (Foo. 42 23)]
+     (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq foo)))
+     (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq [foo])))
+     (is (= [[foo :p2 bar]] (api/triple-seq {foo {:p2 bar}})))
+     (is (= [[23 :p 42] [42 :q 23] [23 :p2 bar] [42 :p2 bar]]
+            (api/triple-seq [foo [[23 42] :p2 bar]])))))
 
   (deftest conversions
     (let [t1 '[[s1 p o]                   ;; 1
@@ -26,13 +39,18 @@
                [s0 [p2 p3] [o1 o2]]]      ;; 4
           t2 '{s1 {p1 o1 p2 o2}           ;; 2
                s2 {p1 [o1 o1 o2] p3 o3}}] ;; 4
+      (is (satisfies? api/PTripleSeq []))
+      ,#+clj (is (satisfies? api/PTripleSeq (list)))
+      ,#+clj (is (satisfies? api/PTripleSeq (cons '[s p o] nil)))
+      (is (satisfies? api/PTripleSeq (lazy-seq [])))
+      (is (satisfies? api/PTripleSeq {}))
       (is (satisfies? api/PModelConvert []))
-      (is (satisfies? api/PModelConvert (list)))
-      (is (satisfies? api/PModelConvert (cons '[s p o] nil)))
+      ,#+clj (is (satisfies? api/PModelConvert (list)))
+      ,#+clj (is (satisfies? api/PModelConvert (cons '[s p o] nil)))
       (is (satisfies? api/PModelConvert (lazy-seq [])))
       (is (satisfies? api/PModelConvert {}))
-      (is (== 27 (count (api/triple-seq-sequential t1))))
-      (is (== 6  (count (api/triple-seq-associative t2))))
+      (is (== 27 (count (api/triple-seq t1))))
+      (is (== 6  (count (api/triple-seq t2))))
       (is (== 26 (api/model-size (api/as-model t1))))
       (is (== 5  (api/model-size (api/as-model t2))))))
 
