@@ -1,5 +1,5 @@
 #+SEQ_TODO:       TODO(t) INPROGRESS(i) WAITING(w@) | DONE(d) CANCELED(c@)
-#+TAGS:           write(w) fix(f) verify(v) noexport(n) template(t) usetemplate(u)
+#+TAGS:           write(w) fix(f) verify(v) noexport(n) template(t) usetemplate(u) toc@3@gh
 #+EXPORT_EXCLUDE_TAGS: noexport
 #+AUTHOR:         Karsten Schmidt
 #+EMAIL:          k@thi.ng

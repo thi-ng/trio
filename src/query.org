@@ -1,6 +1,6 @@
 #+SETUPFILE: setup.org
 
-* Contents                                                         :TOC@4@gh:
+* Contents                                                         :toc@4@gh:
  - [[#namespace-thingtrioquery][Namespace: thi.ng.trio.query]]
      - [[#query-engine-features][Query engine features]]
      - [[#highlevel-query-processing][Highlevel query processing]]

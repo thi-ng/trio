@@ -1,6 +1,6 @@
 #+SETUPFILE: setup.org
 
-* Contents                                                         :TOC@3@gh:
+* Contents                                                         :toc@3@gh:
  - [[#namespace-thingtriocore][Namespace: thi.ng.trio.core]]
      - [[#protocol-definitions][Protocol definitions]]
          - [[#ptripleseq][PTripleSeq]]

@@ -1,7 +1,7 @@
 #+SETUPFILE: setup.org
 #+TITLE: thi.ng/trio
 
-* Contents  :TOC@2@gh:
+* Contents                                                         :toc@3@gh:
  - [[#about-the-project][About the project]]
      - [[#overview][Overview]]
      - [[#status][Status]]
@@ -9,13 +9,18 @@
      - [[#license][License]]
      - [[#injected-properties][Injected properties]]
      - [[#dependencies][Dependencies]]
+         - [[#runtime][Runtime]]
+         - [[#development][Development]]
      - [[#contributors][Contributors]]
      - [[#release-history][Release history]]
      - [[#leiningen-coordinates][Leiningen coordinates]]
      - [[#building-this-project][Building this project]]
+         - [[#testing][Testing]]
+         - [[#working-with-the-repl][Working with the REPL]]
      - [[#leiningen-project-file][Leiningen project file]]
      - [[#clojurescript-html-harness][ClojureScript HTML harness]]
      - [[#accessing-library-version-during-runtime][Accessing library version during runtime]]
+         - [[#version-namespace][Version namespace]]
  - [[#namespaces][Namespaces]]
  - [[#tests][Tests]]
 
