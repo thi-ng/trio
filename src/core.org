@@ -1,5 +1,35 @@
 #+SETUPFILE: setup.org
 
+* Contents                                                         :TOC@3@gh:
+ - [[#namespace-thingtriocore][Namespace: thi.ng.trio.core]]
+     - [[#protocol-definitions][Protocol definitions]]
+         - [[#ptripleseq][PTripleSeq]]
+         - [[#pmodelconvert][PModelConvert]]
+         - [[#pmodel][PModel]]
+         - [[#pdataset][PDataset]]
+         - [[#pstatementaccess][PStatementAccess]]
+         - [[#paliasmodelsupport][PAliasModelSupport]]
+     - [[#helper-functions][Helper functions]]
+     - [[#triple-datatype][Triple datatype]]
+         - [[#templates][Templates]]
+         - [[#implementation][Implementation]]
+         - [[#override-print-methods][Override print methods]]
+         - [[#swizzling][Swizzling]]
+         - [[#constructor][Constructor]]
+     - [[#in-memory-stores][In-memory stores]]
+         - [[#classic-3-index-implementation][Classic 3-index implementation]]
+         - [[#store-with-alias-support][Store with alias support]]
+         - [[#triple-graph-experimental-incomplete][Triple graph (experimental, incomplete)]]
+         - [[#constructors][Constructors]]
+     - [[#multi-store-dataset][Multi-store dataset]]
+         - [[#type-implementation][Type implementation]]
+         - [[#constructor][Constructor]]
+     - [[#clojure-collection-conversion][Clojure collection conversion]]
+         - [[#maps][Maps]]
+         - [[#sequential-collections][Sequential collections]]
+         - [[#protocol-implementations][Protocol implementations]]
+     - [[#complete-namespace-definition][Complete namespace definition]]
+
 * Namespace: thi.ng.trio.core
 
 This namespace provides various protocols for the low-level triple

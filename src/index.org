@@ -1,6 +1,24 @@
 #+SETUPFILE: setup.org
 #+TITLE: thi.ng/trio
 
+* Contents  :TOC@2@gh:
+ - [[#about-the-project][About the project]]
+     - [[#overview][Overview]]
+     - [[#status][Status]]
+     - [[#example-usage][Example usage]]
+     - [[#license][License]]
+     - [[#injected-properties][Injected properties]]
+     - [[#dependencies][Dependencies]]
+     - [[#contributors][Contributors]]
+     - [[#release-history][Release history]]
+     - [[#leiningen-coordinates][Leiningen coordinates]]
+     - [[#building-this-project][Building this project]]
+     - [[#leiningen-project-file][Leiningen project file]]
+     - [[#clojurescript-html-harness][ClojureScript HTML harness]]
+     - [[#accessing-library-version-during-runtime][Accessing library version during runtime]]
+ - [[#namespaces][Namespaces]]
+ - [[#tests][Tests]]
+
 * About the project
 
 ** Overview
@@ -263,18 +281,13 @@ symbol =version= holding the version string defined above:
   (def version "<<version>>")
 #+END_SRC
 
-* Modules
+* Namespaces
 
-*** Note for Github users
-
-The following sections contain links to project modules, but are not
-visibile when reading this file on Github. Please navigate to the
-source files via the normal [[https://github.com/thi.ng/trio/tree/master/][GH repo browser]].
-
-** Core API
-
-#+INCLUDE: "core.org" :minlevel 2
+- [[core.org][thi.ng.trio.core]]
+- [[query.org][thi.ng.trio.query]]
+- [[csv.org][thi.ng.trio.csv]]
 
 * Tests
 
-#+INCLUDE: "../test/core.org" :minlevel 2
+- [[../test/core.org][thi.ng.trio.test.core]]
+- [[../test/query.org][thi.ng.trio.test.query]]
