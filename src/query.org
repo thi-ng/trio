@@ -719,6 +719,10 @@ option:
     :query [{:where '[[?p ?log ?msg]] :values {'?p #{:server :db}}}]})
 #+END_SRC
 
+*Important:* If =:values= are also defined for the top-level query,
+then they're merged with the =:values= bindings of the sub-query
+(using =merge-with= and combining both value sets).
+
 ***** Update query options map
 
 #+BEGIN_SRC clojure :noweb-ref helpers
@@ -791,7 +795,9 @@ option:
                  (assoc q :from from)
                  (satisfies? api/PModelConvert from)
                  (assoc q :from (api/as-model from)))
-              q (if (:values q) q (assoc q :values (or values {})))
+              q (if values
+                  (assoc q :values (merge-with (fnil into #{}) values (:values q)))
+                  (update-in q [:values] (fnil identity {})))
               qfn (cond
                    (:where q)    (compile-query-step qfn q :join)
                    (:optional q) (compile-query-step qfn q :optional)

@@ -34,6 +34,22 @@
       (is (and (= '#{alice bob} (acc3 '?a)) (= '#{ed} (acc3 '?b))))))
 #+END_SRC
 
+** Subquery :values merging
+
+#+BEGIN_SRC clojure :noweb-ref tests
+  (deftest subq-value-merge
+    (let [spec {:select '?m
+                :from g1
+                :query [{:where '[[?m mother ?c]] :values '{?m #{alice}}}]
+                :values '{?m #{gemma}}}]
+      (is (= '{?m #{alice gemma}}
+             (-> spec q/query q/accumulate-result-vars)))
+      (is (= '{?m #{alice}}
+             (-> spec (dissoc :values) q/query q/accumulate-result-vars)))
+      (is (= '{?m #{gemma}}
+             (-> spec (assoc-in [:query 0 :values] nil) q/query q/accumulate-result-vars)))))
+#+END_SRC
+
 ** Namespace declaration
 
 #+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/query.cljx :noweb yes :mkdirp yes :padline no
