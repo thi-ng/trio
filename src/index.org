@@ -1,7 +1,7 @@
 #+SETUPFILE: setup.org
 #+TITLE: thi.ng/trio
 
-* Contents                                                         :toc@3@gh:
+* Contents                                                         :toc_3_gh:
  - [[#about-the-project][About the project]]
      - [[#overview][Overview]]
      - [[#status][Status]]
