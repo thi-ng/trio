@@ -33,6 +33,12 @@
           e  (make-test-entity {:creator cid})]
       (is (= {:creator cid :title "Untitled" :type "trio:TestEntity"
               :created 1000 :modified [1001] :items []}
+             (dissoc e :id))))
+    (let [cid (utils/new-uuid)
+          mod [8 5 13 21 3 1 2]
+          e  (make-test-entity {:creator cid :modified mod})]
+      (is (= {:creator cid :title "Untitled" :type "trio:TestEntity"
+              :created 1000 :modified (vec (sort mod)) :items []}
              (dissoc e :id)))))
 #+END_SRC
 
