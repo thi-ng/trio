@@ -41,57 +41,57 @@
                               ['?x '?p '?y]]}]
                  :c [['?y '?p '?x]]}
 
-     :prp-asyp  {:q [{:where [(?p (:type rdf) (:AsymmetricProperty owl))
-                              (?x ?p ?y)
-                              (?y ?p ?x)]}]
+     :prp-asyp  {:q [{:where [['?p (:type rdf) (:AsymmetricProperty owl)]
+                              ['?x '?p '?y]
+                              ['?y '?p '?x]]}]
                  :c false}
 
-     :prp-trp   {:q [{:where [(?p (:type rdf) (:TransitiveProperty owl))
-                              (?x ?p ?y)
-                              (?y ?p ?z)]}]
-                 :c [[?x ?p ?z]]}
+     :prp-trp   {:q [{:where [['?p (:type rdf) (:TransitiveProperty owl)]
+                              ['?x '?p '?y]
+                              ['?y '?p '?z]]}]
+                 :c [['?x '?p '?z]]}
 
-     :prp-spo1  {:q [{:where [[?p1 (:subPropertyOf rdfs) ?p2]
-                              [?x ?p1 ?y]]}]
-                 :c [[?x ?p2 ?y]]}
+     :prp-spo1  {:q [{:where [['?p1 (:subPropertyOf rdfs) '?p2]
+                              ['?x '?p1 '?y]]}]
+                 :c [['?x '?p2 '?y]]}
 
      :prp-spo2  nil ;; TODO requires property chains
 
-     :prp-eqp1  {:q [{:where [[?p1 (:equivalentProperty owl) ?p2]
-                              [?x ?p1 ?y]]}]
-                 :c [[?x ?p2 ?y]]}
+     :prp-eqp1  {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]
+                              ['?x '?p1 '?y]]}]
+                 :c [['?x '?p2 '?y]]}
 
-     :prp-eqp2  {:q [{:where [[?p1 (:equivalentProperty owl) ?p2]
-                              [?x ?p2 ?y]]}]
-                 :c [[?x ?p1 ?y]]}
+     :prp-eqp2  {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]
+                              ['?x '?p2 '?y]]}]
+                 :c [['?x '?p1 '?y]]}
 
-     :prp-pdw   {:q [{:where [[?p1 (:propertyDisjointWith owl) ?p2]
-                              [?x ?p1 ?y]
-                              [?x ?p2 ?y]]}]
+     :prp-pdw   {:q [{:where [['?p1 (:propertyDisjointWith owl) '?p2]
+                              ['?x '?p1 '?y]
+                              ['?x '?p2 '?y]]}]
                  :c false}
 
      :prp-adp   nil ;; TODO required property chains
 
-     :prp-inv1  {:q [{:where [[?p1 (:inverseOf owl) ?p2]
-                              [?x ?p1 ?y]]}]
-                 :c [[?y ?p2 ?x]]}
+     :prp-inv1  {:q [{:where [['?p1 (:inverseOf owl) '?p2]
+                              ['?x '?p1 '?y]]}]
+                 :c [['?y '?p2 '?x]]}
 
-     :prp-inv2  {:q [{:where [[?p1 (:inverseOf owl) ?p2]
-                              [?x ?p2 ?y]]}]
-                 :c [[?y ?p1 ?x]]}
+     :prp-inv2  {:q [{:where [['?p1 (:inverseOf owl) '?p2]
+                              ['?x '?p2 '?y]]}]
+                 :c [['?y '?p1 '?x]]}
 
      :prp-key   nil ;; TODO required property chains
 
-     :prp-npa1  {:q [{:where [[?x (:sourceIndividual owl) ?i1]
-                              [?x (:assertionProperty owl) ?p]
-                              [?x (:targetIndividual owl) ?i2]
-                              [?i1 ?p ?i2]]}]
+     :prp-npa1  {:q [{:where [['?x (:sourceIndividual owl) '?i1]
+                              ['?x (:assertionProperty owl) '?p]
+                              ['?x (:targetIndividual owl) '?i2]
+                              ['?i1 '?p '?i2]]}]
                  :c false}
 
-     :prp-npa2  {:q [{:where [[?x (:sourceIndividual owl) ?i]
-                              [?x (:assertionProperty owl) ?p]
-                              [?x (:targetValue owl) ?lt]
-                              [?i ?p ?lt]]}]
+     :prp-npa2  {:q [{:where [['?x (:sourceIndividual owl) '?i]
+                              ['?x (:assertionProperty owl) '?p]
+                              ['?x (:targetValue owl) '?lt]
+                              ['?i '?p '?lt]]}]
                  :c false}
      })
 #+END_SRC
@@ -106,7 +106,7 @@
      :cls-nothing1  {:q true
                      :c [[(:Nothing owl) (:type rdf) (:Class owl)]]}
 
-     :cls-nothing2  {:q [{:where [[?x (:type rdf) (:Nothing owl)]]}]
+     :cls-nothing2  {:q [{:where [['?x (:type rdf) (:Nothing owl)]]}]
                      :c false}
 
      :cls-int1      nil ;; TODO
@@ -115,82 +115,82 @@
 
      :cls-uni       nil ;; TODO
 
-     :cls-com       {:q [{:where [[?c1 (:complementOf owl) ?c2]
-                                  [?x (:type rdf) ?c1]]}]
-                     :c [[?x (:type rdf) ?c2]]}
+     :cls-com       {:q [{:where [['?c1 (:complementOf owl) '?c2]
+                                  ['?x (:type rdf) '?c1]]}]
+                     :c [['?x (:type rdf) '?c2]]}
 
-     :cls-svf1      {:q [{:where [[?x (:someValuesFrom owl) ?y]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u ?p ?v]
-                                  [?v (:type rdf) ?y]]}]
-                     :c [[?u (:type rdf) ?x]]}
+     :cls-svf1      {:q [{:where [['?x (:someValuesFrom owl) '?y]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u '?p '?v]
+                                  ['?v (:type rdf) '?y]]}]
+                     :c [['?u (:type rdf) '?x]]}
 
-     :cls-svf2      {:q [{:where [[?x (:someValuesFrom owl) (:Thing owl)]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u ?p ?v]]}]
-                     :c [[?u (:type rdf) ?x]]}
+     :cls-svf2      {:q [{:where [['?x (:someValuesFrom owl) (:Thing owl)]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u '?p '?v]]}]
+                     :c [['?u (:type rdf) '?x]]}
 
-     :cls-avf       {:q [{:where [[?x (:allValuesFrom owl) ?y]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?v]]}]
-                     :c [[?v (:type rdf) ?y]]}
+     :cls-avf       {:q [{:where [['?x (:allValuesFrom owl) '?y]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?v]]}]
+                     :c [['?v (:type rdf) '?y]]}
 
-     :cls-hv1       {:q [{:where [[?x (:hasValue owl) ?y]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u (:type rdf) ?x]]}]
-                     :c [[?u ?p ?y]]}
+     :cls-hv1       {:q [{:where [['?x (:hasValue owl) '?y]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u (:type rdf) '?x]]}]
+                     :c [['?u '?p '?y]]}
 
-     :cls-hv2       {:q [{:where [[?x (:hasValue owl) ?y]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u ?p ?y]]}]
-                     :c [[?u (:type rdf) ?x]]}
+     :cls-hv2       {:q [{:where [['?x (:hasValue owl) '?y]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u '?p '?y]]}]
+                     :c [['?u (:type rdf) '?x]]}
 
-     :cls-maxc1     {:q [{:where [[?x (:maxCardinality owl) 0]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y]]}]
+     :cls-maxc1     {:q [{:where [['?x (:maxCardinality owl) 0]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y]]}]
                      :c false}
 
-     :cls-maxc2     {:q [{:where [[?x (:maxCardinality owl) 1]
-                                  [?x (:onProperty owl) ?p]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y1]
-                                  [?u ?p ?y2]]}]
-                     :c [[?y1 (:sameAs owl) ?y2]]}
+     :cls-maxc2     {:q [{:where [['?x (:maxCardinality owl) 1]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y1]
+                                  ['?u '?p '?y2]]}]
+                     :c [['?y1 (:sameAs owl) '?y2]]}
 
-     :cls-maxqc1    {:q [{:where [[?x (:maxQualifiedCardinality owl) 0]
-                                  [?x (:onProperty owl) ?p]
-                                  [?x (:onClass owl) ?c]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y]
-                                  [?y (:type rdf) ?c]]}]
+     :cls-maxqc1    {:q [{:where [['?x (:maxQualifiedCardinality owl) 0]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?x (:onClass owl) '?c]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y]
+                                  ['?y (:type rdf) '?c]]}]
                      :c false}
 
-     :cls-maxqc2    {:q [{:where [[?x (:maxQualifiedCardinality owl) 0]
-                                  [?x (:onProperty owl) ?p]
-                                  [?x (:onClass owl) (:Thing owl)]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y]]}]
+     :cls-maxqc2    {:q [{:where [['?x (:maxQualifiedCardinality owl) 0]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?x (:onClass owl) (:Thing owl)]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y]]}]
                      :c false}
 
-     :cls-maxqc3    {:q [{:where [[?x (:maxQualifiedCardinality owl) 1]
-                                  [?x (:onProperty owl) ?p]
-                                  [?x (:onClass owl) ?c]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y1]
-                                  [?y1 (:type rdf) ?c]
-                                  [?u ?p ?y2]
-                                  [?y2 (:type rdf) ?c]]}]
-                     :c [[?y1 (:sameAs owl) ?y2]]}
+     :cls-maxqc3    {:q [{:where [['?x (:maxQualifiedCardinality owl) 1]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?x (:onClass owl) '?c]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y1]
+                                  ['?y1 (:type rdf) '?c]
+                                  ['?u '?p '?y2]
+                                  ['?y2 (:type rdf) '?c]]}]
+                     :c [['?y1 (:sameAs owl) '?y2]]}
 
-     :cls-maxqc4    {:q [{:where [[?x (:maxQualifiedCardinality owl) 1]
-                                  [?x (:onProperty owl) ?p]
-                                  [?x (:onClass owl) (:Thing owl)]
-                                  [?u (:type rdf) ?x]
-                                  [?u ?p ?y1]
-                                  [?u ?p ?y2]]}]
-                     :c [[?y1 (:sameAs owl) ?y2]]}
+     :cls-maxqc4    {:q [{:where [['?x (:maxQualifiedCardinality owl) 1]
+                                  ['?x (:onProperty owl) '?p]
+                                  ['?x (:onClass owl) (:Thing owl)]
+                                  ['?u (:type rdf) '?x]
+                                  ['?u '?p '?y1]
+                                  ['?u '?p '?y2]]}]
+                     :c [['?y1 (:sameAs owl) '?y2]]}
 
      :cls-oo        nil ;; TODO
      })
@@ -200,21 +200,21 @@
 
 #+BEGIN_SRC clojure
   (def class-semantics
-    {:cax-sco {:q [{:where [[?c1 (:subClassOf rdfs) ?c2]
-                            [?x (:type rdf) ?c1]]}]
-               :c [[?x (:type rdf) ?c2]]}
+    {:cax-sco {:q [{:where [['?c1 (:subClassOf rdfs) '?c2]
+                            ['?x (:type rdf) '?c1]]}]
+               :c [['?x (:type rdf) '?c2]]}
 
-     :cax-eqc1 {:q [{:where [[?c1 (:equivalentClass owl) ?c2]
-                             [?x (:type rdf) ?c1]]}]
-                :c [[?x (:type rdf) ?c2]]}
+     :cax-eqc1 {:q [{:where [['?c1 (:equivalentClass owl) '?c2]
+                             ['?x (:type rdf) '?c1]]}]
+                :c [['?x (:type rdf) '?c2]]}
 
-     :cax-eqc2 {:q [{:where [[?c1 (:equivalentClass owl) ?c2]
-                             [?x (:type rdf) ?c2]]}]
-                :c [[?x (:type rdf) ?c1]]}
+     :cax-eqc2 {:q [{:where [['?c1 (:equivalentClass owl) '?c2]
+                             ['?x (:type rdf) '?c2]]}]
+                :c [['?x (:type rdf) '?c1]]}
 
-     :cax-dw   {:q [{:where [[?c1 (:disjointWith owl) ?c2]
-                             [?x (:type rdf) ?c1]
-                             [?x (:type rdf) ?c2]]}]
+     :cax-dw   {:q [{:where [['?c1 (:disjointWith owl) '?c2]
+                             ['?x (:type rdf) '?c1]
+                             ['?x (:type rdf) '?c2]]}]
                 :c false}
 
      :cax-adc  nil ;; TODO
@@ -225,94 +225,94 @@
 
 #+BEGIN_SRC clojure
   (def schema-rules
-    {:scm-cls  {:q [{:where [[?c (:type rdf) (:Class owl)]]}]
-                :c [[?c (:subClassOf rdfs) ?c]
-                    [?c (:equivalentClass owl) ?c]
-                    [?c (:subClassOf rdfs) (:Thing owl)]
-                    [(:Nothing owl) (:subClassOf rdfs) ?c]]}
+    {:scm-cls  {:q [{:where [['?c (:type rdf) (:Class owl)]]}]
+                :c [['?c (:subClassOf rdfs) '?c]
+                    ['?c (:equivalentClass owl) '?c]
+                    ['?c (:subClassOf rdfs) (:Thing owl)]
+                    [(:Nothing owl) (:subClassOf rdfs) '?c]]}
 
-     :scm-sco  {:q [{:where [[?c1 (:subClassOf rdfs) ?c2]
-                             [?c2 (:subClassOf rdfs) ?c3]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c3]]}
+     :scm-sco  {:q [{:where [['?c1 (:subClassOf rdfs) '?c2]
+                             ['?c2 (:subClassOf rdfs) '?c3]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c3]]}
 
-     :scm-eqc1 {:q [{:where [[?c1 (:equivalentClass owl) ?c2]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c2]
-                    [?c2 (:subClassOf rdfs) ?c1]]}
+     :scm-eqc1 {:q [{:where [['?c1 (:equivalentClass owl) '?c2]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c2]
+                    ['?c2 (:subClassOf rdfs) '?c1]]}
 
-     :scm-eqc2 {:q [{:where [[?c1 (:subClassOf rdfs) ?c2]
-                             [?c2 (:subClassOf rdfs) ?c1]]}]
-                :c [[?c1 (:equivalentClass owl) ?c2]]}
+     :scm-eqc2 {:q [{:where [['?c1 (:subClassOf rdfs) '?c2]
+                             ['?c2 (:subClassOf rdfs) '?c1]]}]
+                :c [['?c1 (:equivalentClass owl) '?c2]]}
 
-     :scm-op   {:q [{:where [[?p (:type rdf) (:ObjectProperty owl)]]}]
-                :c [[?p (:subPropertyOf rdfs) ?p]
-                    [?p (:equivalentProperty owl) ?p]]}
+     :scm-op   {:q [{:where [['?p (:type rdf) (:ObjectProperty owl)]]}]
+                :c [['?p (:subPropertyOf rdfs) '?p]
+                    ['?p (:equivalentProperty owl) '?p]]}
 
-     :scm-dp   {:q [{:where [[?p (:type rdf) (:DatatypeProperty owl)]]}]
-                :c [[?p (:subPropertyOf rdfs) ?p]
-                    [?p (:equivalentProperty owl) ?p]]}
+     :scm-dp   {:q [{:where [['?p (:type rdf) (:DatatypeProperty owl)]]}]
+                :c [['?p (:subPropertyOf rdfs) '?p]
+                    ['?p (:equivalentProperty owl) '?p]]}
 
-     :scm-spo  {:q [{:where [(?p1 (:subPropertyOf rdfs) ?p2)
-                             (?p2 (:subPropertyOf rdfs) ?p3)]}]
-                :c [[?p1 (:subPropertyOf rdfs) ?p3]]}
+     :scm-spo  {:q [{:where [(?p1 (:subPropertyOf rdfs) '?p2)
+                             (?p2 (:subPropertyOf rdfs) '?p3)]}]
+                :c [['?p1 (:subPropertyOf rdfs) '?p3]]}
 
-     :scm-eqp1 {:q [{:where [[?p1 (:equivalentProperty owl) ?p2]]}]
-                :c [[?p1 (:subPropertyOf rdfs) ?p2]
-                    [?p2 (:subPropertyOf rdfs) ?p1]]}
+     :scm-eqp1 {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]]}]
+                :c [['?p1 (:subPropertyOf rdfs) '?p2]
+                    ['?p2 (:subPropertyOf rdfs) '?p1]]}
 
-     :scm-eqp2 {:q [{:where [[?p1 (:subPropertyOf rdfs) ?p2]
-                             [?p2 (:subPropertyOf rdfs) ?p1]]}]
-                :c [[?p1 (:equivalentProperty owl) ?p2]]}
+     :scm-eqp2 {:q [{:where [['?p1 (:subPropertyOf rdfs) '?p2]
+                             ['?p2 (:subPropertyOf rdfs) '?p1]]}]
+                :c [['?p1 (:equivalentProperty owl) '?p2]]}
 
-     :scm-dom1 {:q [{:where [[?p (:domain rdfs) ?c1]
-                             [?c1 (:subClassOf rdfs) ?c2]]}]
-                :c [[?p (:domain rdfs) ?c2]]}
+     :scm-dom1 {:q [{:where [['?p (:domain rdfs) '?c1]
+                             ['?c1 (:subClassOf rdfs) '?c2]]}]
+                :c [['?p (:domain rdfs) '?c2]]}
 
-     :scm-dom2 {:q [{:where [[?p2 (:domain rdfs) ?c]
-                             [?p1 (:subPropertyOf rdfs) ?p2]]}]
-                :c [[?p1 (:domain rdfs) ?c]]}
+     :scm-dom2 {:q [{:where [['?p2 (:domain rdfs) '?c]
+                             ['?p1 (:subPropertyOf rdfs) '?p2]]}]
+                :c [['?p1 (:domain rdfs) '?c]]}
 
-     :scm-rng1 {:q [{:where [[?p (:range rdfs) ?c1]
-                             [?c1 (:subClassOf rdfs) ?c2]]}]
-                :c [[?p (:range rdfs) ?c2]]}
+     :scm-rng1 {:q [{:where [['?p (:range rdfs) '?c1]
+                             ['?c1 (:subClassOf rdfs) '?c2]]}]
+                :c [['?p (:range rdfs) '?c2]]}
 
-     :scm-rng2 {:q [{:where [[?p2 (:range rdfs) ?c]
-                             [?p1 (:subPropertyOf rdfs) ?p2]]}]
-                :c [[?p1 (:range rdfs) ?c]]}
+     :scm-rng2 {:q [{:where [['?p2 (:range rdfs) '?c]
+                             ['?p1 (:subPropertyOf rdfs) '?p2]]}]
+                :c [['?p1 (:range rdfs) '?c]]}
 
-     :scm-hv   {:q [{:where [[?c1 (:hasValue owl) ?i]
-                             [?c1 (:onProperty owl) ?p1]
-                             [?c2 (:hasValue owl) ?i]
-                             [?c2 (:onProperty owl) ?p2]
-                             [?p1 (:subPropertyOf rdfs) ?p2]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c2]]}
+     :scm-hv   {:q [{:where [['?c1 (:hasValue owl) '?i]
+                             ['?c1 (:onProperty owl) '?p1]
+                             ['?c2 (:hasValue owl) '?i]
+                             ['?c2 (:onProperty owl) '?p2]
+                             ['?p1 (:subPropertyOf rdfs) '?p2]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c2]]}
 
-     :scm-svf1 {:q [{:where [[?c1 (:someValuesFrom owl) ?y1]
-                             [?c1 (:onProperty owl) ?p]
-                             [?c2 (:someValuesFrom owl) ?y2]
-                             [?c2 (:onProperty owl) ?p]
-                             [?y1 (:subClassOf rdfs) ?y2]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c2]]}
+     :scm-svf1 {:q [{:where [['?c1 (:someValuesFrom owl) '?y1]
+                             ['?c1 (:onProperty owl) '?p]
+                             ['?c2 (:someValuesFrom owl) '?y2]
+                             ['?c2 (:onProperty owl) '?p]
+                             ['?y1 (:subClassOf rdfs) '?y2]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c2]]}
 
-     :scm-svf2 {:q [{:where [[?c1 (:someValuesFrom owl) ?y]
-                             [?c1 (:onProperty owl) ?p1]
-                             [?c2 (:someValuesFrom owl) ?y]
-                             [?c2 (:onProperty owl) ?p2]
-                             [?p1 (:subPropertyOf rdfs) ?p2]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c2]]}
+     :scm-svf2 {:q [{:where [['?c1 (:someValuesFrom owl) '?y]
+                             ['?c1 (:onProperty owl) '?p1]
+                             ['?c2 (:someValuesFrom owl) '?y]
+                             ['?c2 (:onProperty owl) '?p2]
+                             ['?p1 (:subPropertyOf rdfs) '?p2]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c2]]}
 
-     :scm-avf1 {:q [{:where [[?c1 (:allValuesFrom owl) ?y1]
-                             [?c1 (:onProperty owl) ?p]
-                             [?c2 (:allValuesFrom owl) ?y2]
-                             [?c2 (:onProperty owl) ?p]
-                             [?y1 (:subClassOf rdfs) ?y2]]}]
-                :c [[?c1 (:subClassOf rdfs) ?c2]]}
+     :scm-avf1 {:q [{:where [['?c1 (:allValuesFrom owl) '?y1]
+                             ['?c1 (:onProperty owl) '?p]
+                             ['?c2 (:allValuesFrom owl) '?y2]
+                             ['?c2 (:onProperty owl) '?p]
+                             ['?y1 (:subClassOf rdfs) '?y2]]}]
+                :c [['?c1 (:subClassOf rdfs) '?c2]]}
 
-     :scm-avf2 {:q [{:where [[?c1 (:allValuesFrom owl) ?y]
-                             [?c1 (:onProperty owl) ?p1]
-                             [?c2 (:allValuesFrom owl) ?y]
-                             [?c2 (:onProperty owl) ?p2]
-                             [?p1 (:subPropertyOf rdfs) ?p2]]}]
-                :c [[?c2 (:subClassOf rdfs) ?c1]]}
+     :scm-avf2 {:q [{:where [['?c1 (:allValuesFrom owl) '?y]
+                             ['?c1 (:onProperty owl) '?p1]
+                             ['?c2 (:allValuesFrom owl) '?y]
+                             ['?c2 (:onProperty owl) '?p2]
+                             ['?p1 (:subPropertyOf rdfs) '?p2]]}]
+                :c [['?c2 (:subClassOf rdfs) '?c1]]}
 
      :scm-int  nil ;; TODO
 
