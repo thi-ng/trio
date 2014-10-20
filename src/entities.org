@@ -3,12 +3,104 @@
 * Contents                                                         :toc_3_gh:
  - [[#namespace-thingtrioentities][Namespace: thi.ng.trio.entities]]
      - [[#defentity-macro][defentity macro]]
+         - [[#example][Example]]
+         - [[#generated-results][Generated results]]
+         - [[#field-specification-options][Field specification options]]
+         - [[#initializing-order][Initializing order]]
+         - [[#implementation][Implementation]]
      - [[#helper-functions][Helper functions]]
      - [[#complete-namespace-definitions][Complete namespace definitions]]
 
 * Namespace: thi.ng.trio.entities
 
 ** defentity macro
+
+The =defentity= macro shown below provides a mechanism to define
+graph-based entities as =defrecord= instances and supplements these
+with various other options, like defaults, initializers & validation.
+We first specify an example entity and then discuss each element in
+detail:
+
+*** Example
+
+This entity defines a hypothetical user account with 6 properties and
+their constraints and serialization mappings when the entity is
+represented/serialized as triples.
+
+#+BEGIN_SRC clojure
+  (defentity User "foaf:Agent"
+    {:user-name {:prop "foaf:nick"
+                 :validate [(v/string) (v/max-length 32)]}
+     :name      {:prop "foaf:name"
+                 :validate [(v/string) (v/max-length 64)]
+                 :optional true}
+     :mbox      {:prop "foaf:mbox"
+                 :validate [(v/mailto)]
+                 :optional true}
+     :homepage  {:prop "foaf:homepage"
+                 :validate [(v/url)]
+                 :card :*
+                 :order :asc
+                 :optional true}
+     :password  {:prop "imago:passwordSha256Hash"
+                 :validate [(v/string) (v/fixed-length 64)]
+                 :init (fn [{:keys [user-name password]}]
+                         (if (== 64 (count password))
+                           password
+                           (utils/sha-256 user-name password salt)))
+                 :optional true}
+     :created   {:prop "dcterms:created"
+                 :validate [(v/number) (v/pos)]
+                 :default (fn [_] (utils/timestamp))}})
+#+END_SRC
+
+*** Generated results
+
+The above call to =defentity= will result in the following:
+
+- a new a new =defrecord= called =User= (defined in the current ns),
+  which implements the =trio.core/PTripleSeq= protocol
+- a factory function called =make-user=, which should be used in place
+  of Clojure's auto-generated =map->User= fn. This ctor also takes a
+  single map of args, but first transforms it with the initializers &
+  default value options specified and then also validates all fields
+  before constructing the =User= instance
+- a function called =describe-user=, which executes a =:describe=
+  query for the given entity ID and returns a seq of triples
+  associated with this entity
+- a factory function called =describe-as-user=, which is based on
+  =describe-user=, but parses the found triples and constructs a
+  =User= instance from these.
+
+*Note:* Doc-strings are generated for all factory fns.
+
+*** Field specification options
+
+| *Key*     | *Description*                                                           | *Optional?* |
+|-----------+-------------------------------------------------------------------------+-------------|
+| :prop     | Value of the field's predicate when (de)serializing to/from triples     | N           |
+| :validate | Vector of validation fns to apply for this field                        | Y           |
+| :init     | Custom field initializer/transformer fn                                 | Y           |
+| :default  | Custom field default value generator fn                                 | Y           |
+| :optional | true, if field does not need to be specified during construction        | Y           |
+| :card     | field cardinality, currently only =:*= supported (assumes 1 if missing) | Y           |
+
+**** :prop
+**** :validate
+**** :init
+**** :default
+**** :optional
+**** :card
+
+*** Initializing order
+
+1. Inject =:id= & =:type= props in arg map
+2. Apply specified & auto-generated initializers
+3. Inject default values for missing props
+4. Apply validators
+5. Construct entity =defrecord= instance
+
+*** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref macros
   (defmacro defentity
