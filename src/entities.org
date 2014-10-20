@@ -14,28 +14,31 @@
   (defmacro defentity
     [name type props]
     (let [->sym      (comp symbol clojure.core/name)
-          props      (merge {:type {:prop "rdf:type"}} props)
+          props      (merge {:type {:prop "rdf:type" :validate [(v/required)]}} props)
           fields     (cons 'id (map ->sym (keys props)))
           ctor-name  (utils/->kebab-case name)
           ctor       (symbol (str 'make- ctor-name))
           dctor      (symbol (str 'describe- ctor-name))
           dctor-as   (symbol (str 'describe-as- ctor-name))
           mctor      (symbol (str 'map-> name))
-          type-prop  (-> props :type :prop)]
-      `(let [validators# (eu/build-validators ~props)
-             inits#      (eu/build-initializers ~props)
-             defaults#   (eu/build-defaults ~props)]
+          wrap-props (symbol (str ctor-name '-props))]
+      `(let [props#      ~props
+             type-prop#  (-> props# :type :prop)
+             validators# (eu/build-validators props#)
+             inits#      (eu/build-initializers props#)
+             defaults#   (eu/build-defaults props#)]
          ;;(prn "-------- " ~type)
          ;;(prn :props ~props)
          ;;(prn :fields ~fields)
          ;;(prn :validators validators#)
          ;;(prn :inits inits#)
          ;;(prn :defaults defaults#)
+         (defn ~wrap-props [] props#)
          (defrecord ~name [~@fields]
            api/PTripleSeq
            (~'triple-seq
-             [_#] (eu/filtered-triple-seq {~'id (eu/triple-map ~props _#)})))
-
+             [_#] (eu/filtered-triple-seq {~'id (eu/triple-map (~wrap-props) _#)})))
+         
          (defn ~ctor
            {:doc ~(str "Constructs a new `" (namespace-munge *ns*) "." `~name "` entity from given map.\n"
                        "  Applies entity's property intializers, defaults & validation.\n"
@@ -46,8 +49,11 @@
                  (-> opts#
                      (assoc :id (or (:id opts#) (utils/new-uuid)))
                      (assoc :type (or (:type opts#) ~type))
+                     ;;((fn [_#] (prn :pre-init _#) _#))
                      (eu/apply-initializers inits#)
+                     ;;((fn [_#] (prn :post-init _#) _#))
                      (eu/inject-defaults defaults#)
+                     ;;((fn [_#] (prn :post-default _#) _#))
                      (v/validate validators#))]
              (if (nil? err#)
                (~mctor opts#)
@@ -61,7 +67,7 @@
            (q/query
             {:describe '~'?id
              :from g#
-             :query [{:where [['~'?id ~type-prop ~type]]}]
+             :query [{:where [['~'?id type-prop# ~type]]}]
              :values {'~'?id #{id#}}}))
 
          (defn ~dctor-as
@@ -72,7 +78,7 @@
             :arglists '([~'graph ~'id])}
            [g# id#]
            (-> (~dctor g# id#)
-               (eu/entity-map-from-triples ~props id#)
+               (eu/entity-map-from-triples props# id#)
                (~ctor))))))
 #+END_SRC
 
@@ -133,7 +139,7 @@
        (let [ordered (if order (build-sorter k order))]
          (cond
           init        (assoc acc k (if order (fn [_] (-> _ order init)) init))
-          ordered     (assoc acc k order)
+          ordered     (assoc acc k ordered)
           (= :* card) (assoc acc k (pick-id-coll k))
           :else       acc)))
      {} props))
