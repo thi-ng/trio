@@ -1,0 +1,201 @@
+#+SETUPFILE: setup.org
+
+* Contents                                                         :toc_3_gh:
+ - [[#namespace-thingtrioentities][Namespace: thi.ng.trio.entities]]
+     - [[#defentity-macro][defentity macro]]
+     - [[#helper-functions][Helper functions]]
+     - [[#complete-namespace-definitions][Complete namespace definitions]]
+
+* Namespace: thi.ng.trio.entities
+
+** defentity macro
+
+#+BEGIN_SRC clojure :noweb-ref macros
+  (defmacro defentity
+    [name type props]
+    (let [->sym      (comp symbol clojure.core/name)
+          props      (merge {:type {:prop "rdf:type"}} props)
+          fields     (cons 'id (map ->sym (keys props)))
+          ctor-name  (utils/->kebab-case name)
+          ctor       (symbol (str 'make- ctor-name))
+          dctor      (symbol (str 'describe- ctor-name))
+          dctor-as   (symbol (str 'describe-as- ctor-name))
+          mctor      (symbol (str 'map-> name))
+          type-prop  (-> props :type :prop)]
+      `(let [validators# (eu/build-validators ~props)
+             inits#      (eu/build-initializers ~props)
+             defaults#   (eu/build-defaults ~props)]
+         ;;(prn "-------- " ~type)
+         ;;(prn :props ~props)
+         ;;(prn :fields ~fields)
+         ;;(prn :validators validators#)
+         ;;(prn :inits inits#)
+         ;;(prn :defaults defaults#)
+         (defrecord ~name [~@fields]
+           api/PTripleSeq
+           (~'triple-seq
+             [_#] (eu/filtered-triple-seq {~'id (eu/triple-map ~props _#)})))
+
+         (defn ~ctor
+           {:doc ~(str "Constructs a new `" (namespace-munge *ns*) "." `~name "` entity from given map.\n"
+                       "  Applies entity's property intializers, defaults & validation.\n"
+                       "  In case of validation errors, throws map of errors using `slingshot/throw+`.")
+            :arglists '([~'props])}
+           [opts#]
+           (let [[opts# err#]
+                 (-> opts#
+                     (assoc :id (or (:id opts#) (utils/new-uuid)))
+                     (assoc :type (or (:type opts#) ~type))
+                     (eu/apply-initializers inits#)
+                     (eu/inject-defaults defaults#)
+                     (v/validate validators#))]
+             (if (nil? err#)
+               (~mctor opts#)
+               (err/illegal-arg! (pr-str err#)))))
+
+         (defn ~dctor
+           {:doc ~(str "Executes a :describe query for given entity ID in graph.\n"
+                       "  Returns seq of triples. ")
+            :arglists '([~'graph ~'id])}
+           [g# id#]
+           (q/query
+            {:describe '~'?id
+             :from g#
+             :query [{:where [['~'?id ~type-prop ~type]]}]
+             :values {'~'?id #{id#}}}))
+
+         (defn ~dctor-as
+           {:doc ~(str "Constructs a new `" (namespace-munge *ns*) "." `~name "` entity based on a graph query\n"
+                       "  for given entity ID and its specified props/rels (any additional rels will be included\n"
+                       "  too, but are not validated during construction). If returned query results conflict\n"
+                       "  with entity validation, throws map of errors using `slingshot/throw+`.")
+            :arglists '([~'graph ~'id])}
+           [g# id#]
+           (-> (~dctor g# id#)
+               (eu/entity-map-from-triples ~props id#)
+               (~ctor))))))
+#+END_SRC
+
+** Helper functions
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn filtered-triple-seq
+    [xs] (->> xs (api/triple-seq) (filter #(-> % last nil? not))))
+
+  (defn triple-map
+    [props rec]
+    (->> props
+         (map
+          (fn [[k f]]
+            [(:prop f)
+             (if-let [ser (:values f)]
+               (ser (k rec))
+               (k rec))]))
+         (into {})
+         (merge (->> props keys (apply dissoc rec :id) keys (select-keys rec)))))
+
+  (defn pick-id
+    [id] (fn [x] (let [k (id x)] (if (map? k) (:id k) k))))
+
+  (defn pick-id-coll
+    [id]
+    (fn [x]
+      (let [k (id x)
+            k (if (or (string? k) (number? k) (map? k)) [k] k)]
+        (mapv #(if (map? %) (:id %) %) k))))
+
+  (defn wrap-optional [vals] (mapv #(v/optional %) vals))
+
+  (defn build-validators
+    [props]
+    (reduce-kv
+     (fn [acc k {:keys [validate optional card]}]
+       (if validate
+         (let [v (if (and optional (not (map? validate)))
+                   (wrap-optional validate)
+                   validate)]
+           (assoc acc k (if (and (= card :*) (not (map? v))) {:* v} v)))
+         acc))
+     {} props))
+
+  (defn build-sorter
+    [id dir]
+    (fn [props]
+      (let [p (props id)]
+        (if (coll? p)
+          (vec (if (= :asc dir) (sort p) (reverse (sort p))))
+          p))))
+
+  (defn build-initializers
+    [props]
+    (reduce-kv
+     (fn [acc k {:keys [init card order]}]
+       (let [ordered (if order (build-sorter k order))]
+         (cond
+          init        (assoc acc k (if order (fn [_] (-> _ order init)) init))
+          ordered     (assoc acc k order)
+          (= :* card) (assoc acc k (pick-id-coll k))
+          :else       acc)))
+     {} props))
+
+  (defn apply-initializers
+    [props inits]
+    (reduce-kv
+     (fn [acc k v] (if (acc k) (assoc acc k (v acc)) acc))
+     props inits))
+
+  (defn build-defaults
+    [props]
+    (reduce-kv
+     (fn [acc k {:keys [card default]}]
+       (cond
+        default     (assoc acc k default)
+        (= :* card) (assoc acc k (fn [_] []))
+        :else       acc))
+     {} props))
+
+  (defn inject-defaults
+    [props defaults]
+    (reduce-kv
+     (fn [acc k v] (if (nil? (acc k)) (assoc acc k (if (fn? v) (v acc) v)) acc))
+     props defaults))
+
+  (defn entity-map-from-triples
+    [triples props id]
+    (let [iprop (reduce-kv (fn [acc k v] (assoc acc (:prop v) k)) {} props)
+          conj* (fnil conj [])]
+      (->> triples
+           (filter #(= id (:s %)))
+           (reduce
+            (fn [acc [_ p o]]
+              (let [p' (iprop p p)
+                    op (props p')]
+                (if (and op (-> op :card (not= :*)))
+                  (assoc acc p' o)
+                  (update-in acc [p'] conj* o))))
+            {:id id}))))
+#+END_SRC
+
+** Complete namespace definitions
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/entities.clj :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.entities
+    (:require
+     [thi.ng.trio.core :as api]
+     [thi.ng.trio.query :as q]
+     [thi.ng.trio.utils :as utils]
+     [thi.ng.trio.entities.utils :as eu]
+     [thi.ng.validate.core :as v]
+     [thi.ng.common.error :as err]))
+
+  <<macros>>
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/entities/utils.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.entities.utils
+    (:require
+     [thi.ng.trio.core :as api]
+     [thi.ng.validate.core :as v]))
+
+  <<helpers>>
+#+END_SRC

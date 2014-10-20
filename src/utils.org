@@ -1,0 +1,51 @@
+#+SETUPFILE: setup.org
+
+* Contents                                                         :toc_3_gh:
+ - [[#namespace-thingtrioutils][Namespace: thi.ng.trio.utils]]
+     - [[#case-conversion][Case conversion]]
+     - [[#uuid-generation][UUID generation]]
+     - [[#complete-namespace-definition][Complete namespace definition]]
+
+* Namespace: thi.ng.trio.utils
+
+** Case conversion
+
+#+BEGIN_SRC clojure :noweb-ref case-convert
+  (defn ->kebab-case
+    [x] (-> x (str/replace #"([a-z\d])([A-Z])" "$1-$2") str/lower-case))
+#+END_SRC
+
+** UUID generation
+
+#+BEGIN_SRC clojure :noweb-ref uuid
+  ,#+clj
+  (defn new-uuid [] (str (java.util.UUID/randomUUID)))
+
+  ,#+cljs
+  (defn- rand-bits [pow]
+    (rand-int (bit-shift-left 1 pow)))
+
+  ,#+cljs
+  (defn new-uuid
+    []
+    (str
+     (-> (js/Date.) (.getTime) (/ 1000) (Math/round) (.toString 16))
+     "-" (-> (rand-bits 16) (.toString 16))
+     "-" (-> (rand-bits 16) (bit-and 0x0fff) (bit-or 0x4000) (.toString 16))
+     "-" (-> (rand-bits 16) (bit-and 0x3fff) (bit-or 0x8000) (.toString 16))
+     "-" (-> (rand-bits 16) (.toString 16))
+     (-> (rand-bits 16) (.toString 16))
+     (-> (rand-bits 16) (.toString 16))))
+#+END_SRC
+
+** Complete namespace definition
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/utils.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.utils
+    (:require
+     [clojure.string :as str]))
+
+  <<case-convert>>
+
+  <<uuid>>
+#+END_SRC
