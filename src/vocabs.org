@@ -1,0 +1,168 @@
+#+SETUPFILE: setup.org
+
+* Contents                                                         :toc_3_gh:
+ - [[#namespace-thingtriovocabs][Namespace: thi.ng.trio.vocabs]]
+     - [[#common-linked-data-terms][Common linked data terms]]
+         - [[#rdf][RDF]]
+         - [[#rdfs][RDFS]]
+         - [[#dublincore][Dublincore]]
+     - [[#vocab-construction-helpers][Vocab construction helpers]]
+     - [[#complete-namespace-definitions][Complete namespace definitions]]
+
+* Namespace: thi.ng.trio.vocabs
+
+** Common linked data terms
+
+*** RDF
+
+#+BEGIN_SRC clojure :noweb-ref rdf
+  (defvocab rdf "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    :Alt
+    :Bag
+    :HTML
+    :List
+    :PlainLiteral
+    :Property
+    :Resource
+    :Seq
+    :Statement
+    :XMLLiteral
+    :first
+    :langString
+    :nil
+    :object
+    :predicate
+    :rest
+    :subject
+    :type
+    :value)
+#+END_SRC
+
+*** RDFS
+
+#+BEGIN_SRC clojure :noweb-ref rdfs
+  (defvocab rdfs "http://www.w3.org/2000/01/rdf-schema#"
+    :Class
+    :Container
+    :ContainerMembershipProperty
+    :Datatype
+    :Literal
+    :Resource
+    :comment
+    :domain
+    :isDefinedBy
+    :label
+    :member
+    :range
+    :seeAlso
+    :subClassOf
+    :subPropertyOf)
+#+END_SRC
+
+*** Dublincore
+
+#+BEGIN_SRC clojure :noweb-ref dcterms
+  (defvocab dcterms "http://purl.org/dc/terms/"
+    :abstract
+    :accessRights
+    :contributor
+    :created
+    :creator
+    :dateSubmitted
+    :description
+    :format
+    :hasPart
+    :hasVersion
+    :isPartOf
+    :license
+    :modified
+    :publisher
+    :references
+    :rights
+    :title)
+#+END_SRC
+
+** Vocab construction helpers
+
+#+BEGIN_SRC clojure :noweb-ref helpers
+  ,#+clj
+  (defn load-vocab-triples
+    [path]
+    (->> path
+         (io/resource)
+         (slurp)
+         (edn/read-string)
+         (api/triple-seq)
+         (vec)))
+
+  ,#+clj
+  (defn load-model
+    [path]
+    (->> path
+         (io/resource)
+         (slurp)
+         (edn/read-string)
+         (api/as-model)))
+
+  (defn vocab-from-model
+    [graph]
+    (->> graph
+         (api/subjects)
+         (map #(let [[_ v] (str/split % #":")] [(keyword v) %]))
+         (into {})))
+
+  (defn make-vocab
+    [uri xs]
+    (->> xs
+         (map (fn [x] [x (str uri (name x))]))
+         (into {})))
+#+END_SRC
+
+** Complete namespace definitions
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs.clj :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs
+    (:require
+     [thi.ng.trio.vocabs.utils :as vu]))
+
+  (defmacro defvocab
+    [id uri & xs]
+    `(def ~id (let [xs# (list ~@xs)] (vu/make-vocab ~uri xs#))))
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/utils.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs.utils
+    (:require
+     [thi.ng.trio.core :as api]
+     [clojure.java.io :as io]
+     [clojure.edn :as edn]
+     [clojure.string :as str]))
+
+  <<helpers>>
+#+END_SRC
+
+#+BEGIN_SRC clojure :noweb-ref incl-macros
+  ,#+cljs (:require-macros [thi.ng.trio.vocabs :refer [defvocab]])
+  ,#+clj  (:require [thi.ng.trio.vocabs :refer [defvocab]])
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/rdf.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs.rdf
+    <<incl-macros>>)
+
+  <<rdf>>
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/rdfs.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs.rdfs
+    <<incl-macros>>)
+
+  <<rdfs>>
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/dcterms.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs.dcterms
+    <<incl-macros>>)
+
+  <<dcterms>>
+#+END_SRC
