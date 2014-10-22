@@ -7,8 +7,9 @@
          - [[#pmodelconvert][PModelConvert]]
          - [[#pmodel][PModel]]
          - [[#pdataset][PDataset]]
-         - [[#pstatementaccess][PStatementAccess]]
+         - [[#ptripleaccess][PTripleAccess]]
          - [[#paliasmodelsupport][PAliasModelSupport]]
+         - [[#pmodelupdatehooks][PModelUpdateHooks]]
      - [[#helper-functions][Helper functions]]
      - [[#triple-datatype][Triple datatype]]
          - [[#templates][Templates]]
@@ -132,19 +133,19 @@ directly query a specific model, rather than all.
     (get-model [_ id]))
 #+END_SRC
 
-*** PStatementAccess
+*** PTripleAccess
 
 This protocol defines accessors to add, update and remove triples from
 a store. Bulk operations are defined, in order to allow optimized
 implementations relying on connections to external storage layers.
 
 #+BEGIN_SRC clojure :noweb-ref protos
-  (defprotocol PStatementAccess
-    (add-statement [_ s] [_ g s])
-    (add-bulk [_ statements] [_ g statements])
-    (remove-statement [_ s] [_ g s])
-    (remove-bulk [_ statements] [_ g statements])
-    (update-statement [_ s s'] [_ g s s'])
+  (defprotocol PTripleAccess
+    (add-triple [_ s] [_ g s])
+    (add-triples [_ triples] [_ g triples])
+    (remove-triple [_ s] [_ g s])
+    (remove-triples [_ triples] [_ g triples])
+    (update-triple [_ s s'] [_ g s s'])
     (remove-subject [_ s] [_ g s]))
 #+END_SRC
 
@@ -178,8 +179,8 @@ for more details.
     [store pred id p q]
     (if (pred store p)
       (let [xs (apply select store (assoc [nil nil nil] id p))
-            store (remove-bulk store xs)]
-        (add-bulk store (map #(assoc % id q) xs)))
+            store (remove-triples store xs)]
+        (add-triples store (map #(assoc % id q) xs)))
       store))
 
   (defn rewrite-alias-naive
@@ -636,8 +637,8 @@ of the code.
 
 #+BEGIN_SRC clojure :noweb-ref memstore
   (defrecord PlainMemoryStore [spo pos osp size]
-    PStatementAccess
-    (add-statement
+    PTripleAccess
+    (add-triple
       [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil)) _
         (let [s (get (find spo s) 0 s)
@@ -649,8 +650,8 @@ of the code.
            (update-in pos [p o] d/set-conj t)
            (update-in osp [o s] d/set-conj t)
            (inc size)))))
-    (add-bulk [_ statements]
-      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs statements]
+    (add-triples [_ triples]
+      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs triples]
         (if xs
           (let [[s p o :as t] (first xs)]
             (if (-> spo (get s nil) (get p nil) (get t nil))
@@ -669,7 +670,7 @@ of the code.
           (if changed?
             (PlainMemoryStore. spo pos osp size)
             _))))
-    (remove-statement [_ [s p o :as t]]
+    (remove-triple [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil))
         (PlainMemoryStore.
          (remove-from-index spo s p t)
@@ -677,8 +678,8 @@ of the code.
          (remove-from-index osp o s t)
          (dec size))
         _))
-    (remove-bulk [_ statements]
-      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs statements]
+    (remove-triples [_ triples]
+      (loop [changed? false, spo spo, pos pos, osp osp, size size, xs triples]
         (if xs
           (let [[s p o :as t] (first xs)]
             (if (-> spo (get s nil) (get p nil) (get t nil))
@@ -693,10 +694,10 @@ of the code.
           (if changed?
             (PlainMemoryStore. spo pos osp size)
             _))))
-    (update-statement [_ s1 s2]
-      (add-statement (remove-statement _ s1) s2))
+    (update-triple [_ s1 s2]
+      (add-triple (remove-triple _ s1) s2))
     (remove-subject [_ s]
-      (remove-bulk _ (select _ s nil nil)))
+      (remove-triples _ (select _ s nil nil)))
 
     PModel
     (subject? [_ x]
@@ -760,27 +761,27 @@ chosen. In the case of the =AliasMemoryStore= this means any triples
 containing aliased values will be rewritten to contain only canonical
 values. This happens with already existing triples and newly added
 ones. Aliases can be defined and removed at any time, although it's
-more efficient to declare aliases before inserting new statements to
+more efficient to declare aliases before inserting new triples to
 avoid major rewrite operations.
 
 #+BEGIN_SRC clojure :noweb-ref alias-store
   (defrecord AliasMemoryStore [store aliases]
-    PStatementAccess
-    (add-statement
+    PTripleAccess
+    (add-triple
       [_ [s p o]]
       (let [t [(or (u/canonical aliases s) s)
                (or (u/canonical aliases p) p)
                (or (u/canonical aliases o) o)]]
-        (AliasMemoryStore. (add-statement store t) aliases)))
-    (add-bulk
-      [_ statements]
-      (loop [store store, xs statements]
+        (AliasMemoryStore. (add-triple store t) aliases)))
+    (add-triples
+      [_ triples]
+      (loop [store store, xs triples]
         (if xs
           (let [[s p o] (first xs)
                 t [(or (u/canonical aliases s) s)
                    (or (u/canonical aliases p) p)
                    (or (u/canonical aliases o) o)]]
-            (recur (add-statement store t) (next xs)))
+            (recur (add-triple store t) (next xs)))
           (AliasMemoryStore. store aliases))))
 
     PModel
@@ -884,8 +885,8 @@ joins...
     (get-node
       [_ t] (nodes (ids t)))
 
-    PStatementAccess
-    (add-statement
+    PTripleAccess
+    (add-triple
       [_ [s p o :as t]]
       (if-not (ids t)
         (let [id (.-next-id _)
@@ -929,9 +930,9 @@ joins...
     (let [root (TripleNode. [nil nil nil] nil)]
       (add-node (TripleGraph. {} {} 0) root)))
 #+END_SRC
-**** Old add-statement (ignore)
+**** Old add-triple (ignore)
 #+BEGIN_SRC clojure
-  (add-statement
+  (add-triple
    [_ [s p o :as t]]
    (let [[_ t1s] (if-let [n (nodes (ids [s nil nil]))]
                    [_ n] (let [n (index-node [s nil nil])] [(add-node _ n [(nodes 0)]) n]))
@@ -951,11 +952,11 @@ joins...
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
     [& triples]
-    (add-bulk (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
+    (add-triples (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
 
   (defn alias-store
     [store aliases & triples]
-    (add-bulk (reduce (partial apply u/union) (AliasMemoryStore. store (u/disjoint-set)) aliases) triples))
+    (add-triples (reduce (partial apply u/union) (AliasMemoryStore. store (u/disjoint-set)) aliases) triples))
 #+END_SRC
 
 ** Multi-store dataset
@@ -964,23 +965,23 @@ joins...
 
 #+BEGIN_SRC clojure :noweb-ref dataset
   (defrecord PlainDataset [models]
-    PStatementAccess
-    (add-statement [_ s]
-      (add-statement _ :default s))
-    (add-statement [_ g s]
-      (update-in _ [:models g] add-statement s))
-    (add-bulk [_ statements]
-      (add-bulk _ :default statements))
-    (add-bulk [_ g statements]
-      (update-in _ [:models g] add-bulk statements))
-    (remove-statement [_ s]
-      (remove-statement _ :default s))
-    (remove-statement [_ g s]
-      (update-in _ [:models g] remove-statement s))
-    (remove-bulk [_ statements]
-      (remove-bulk _ :default statements))
-    (remove-bulk [_ g statements]
-      (update-in _ [:models g] remove-bulk statements))
+    PTripleAccess
+    (add-triple [_ s]
+      (add-triple _ :default s))
+    (add-triple [_ g s]
+      (update-in _ [:models g] add-triple s))
+    (add-triples [_ triples]
+      (add-triples _ :default triples))
+    (add-triples [_ g triples]
+      (update-in _ [:models g] add-triples triples))
+    (remove-triple [_ s]
+      (remove-triple _ :default s))
+    (remove-triple [_ g s]
+      (update-in _ [:models g] remove-triple s))
+    (remove-triples [_ triples]
+      (remove-triples _ :default triples))
+    (remove-triples [_ g triples]
+      (update-in _ [:models g] remove-triples triples))
     (remove-subject [_ s]
       (remove-subject _ :default s))
     (remove-subject [_ g s]

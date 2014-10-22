@@ -242,7 +242,7 @@ already in the graph, no duplicates will be added.
 
 #+BEGIN_SRC clojure
   ;; build new graph with inferred triples
-  (def g2 (add-bulk g (q/query infer-parents)))
+  (def g2 (add-triples g (q/query infer-parents)))
 
   ;; select all parents from new graph and group by child
   (q/query {:select :* :from g2 :query [{:where '[[?p parent ?c]]}] :group '?c})
