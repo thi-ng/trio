@@ -169,31 +169,62 @@
 ** Vocab construction helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
+  (defn expand-prefixes
+    [prefixes x]
+    (if (string? x)
+      (let [[p n] (str/split x #":")]
+        (if-let [p (prefixes p)]
+          (str p n)
+          x))
+      x))
+
+  (defn expand-prefixes-in-triple
+    [prefixes [s p o]]
+    (api/triple
+     (expand-prefixes prefixes s)
+     (expand-prefixes prefixes p)
+     (expand-prefixes prefixes o)))
+
+  (defn triple-seq-with-prefixes
+    [prefixes triples]
+    (->> triples
+         (api/triple-seq)
+         (mapv #(expand-prefixes-in-triple prefixes %))))
+
   ,#+clj
   (defn load-vocab-triples
-    [path]
-    (->> path
-         (io/resource)
-         (slurp)
-         (edn/read-string)
-         (api/triple-seq)
-         (vec)))
+    [src]
+    (let [{:keys [prefixes triples]}
+          (->> src
+               (io/input-stream)
+               (slurp)
+               (edn/read-string))]
+      (triple-seq-with-prefixes prefixes triples)))
 
   ,#+clj
-  (defn load-model
-    [path]
-    (->> path
-         (io/resource)
-         (slurp)
-         (edn/read-string)
-         (api/as-model)))
+  (defn load-vocab-as-model
+    [src] (->> src (load-vocab-triples) (api/as-model)))
 
-  (defn vocab-from-model
-    [graph]
+
+  (defn find-prefix
+    [prefixes ^String uri]
+    (loop [[[pre puri] & more] (seq prefixes)]
+      (when pre
+        (if (.startsWith uri ^String puri)
+          [pre (subs uri (count puri))]
+          (recur more)))))
+
+  (defn vocabs-from-model
+    [prefixes graph]
     (->> graph
          (api/subjects)
-         (map #(let [[_ v] (str/split % #":")] [(keyword v) %]))
-         (into {})))
+         (reduce
+          (fn [acc uri]
+            (let [[p n] (find-prefix prefixes uri)]
+              (if p
+                (update-in acc [p] (fnil conj []) (keyword n))
+                acc)))
+          {})))
 
   (defn make-vocab
     [uri xs]
