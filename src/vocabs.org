@@ -5,6 +5,7 @@
      - [[#common-linked-data-terms][Common linked data terms]]
          - [[#rdf][RDF]]
          - [[#rdfs][RDFS]]
+         - [[#owl][OWL]]
          - [[#dublincore][Dublincore]]
      - [[#vocab-construction-helpers][Vocab construction helpers]]
      - [[#complete-namespace-definitions][Complete namespace definitions]]
@@ -57,6 +58,89 @@
     :seeAlso
     :subClassOf
     :subPropertyOf)
+#+END_SRC
+
+*** OWL
+
+#+BEGIN_SRC clojure :noweb-ref owl
+  (defvocab owl "http://www.w3.org/2002/07/owl#"
+    :AllDifferent
+    :AllDisjointClasses
+    :AllDisjointProperties
+    :Annotation
+    :AnnotationProperty
+    :AsymmetricProperty
+    :Axiom
+    :Class
+    :DataRange
+    :DatatypeProperty
+    :DeprecatedClass
+    :DeprecatedProperty
+    :FunctionalProperty
+    :InverseFunctionalProperty
+    :IrreflexiveProperty
+    :NamedIndividual
+    :NegativePropertyAssertion
+    :Nothing
+    :ObjectProperty
+    :Ontology
+    :OntologyProperty
+    :ReflexiveProperty
+    :Restriction
+    :SymmetricProperty
+    :Thing
+    :TransitiveProperty
+    :allValuesFrom
+    :annotatedProperty
+    :annotatedSource
+    :annotatedTarget
+    :assertionProperty
+    :backwardCompatibleWith
+    :bottomDataProperty
+    :bottomObjectProperty
+    :cardinality
+    :complementOf
+    :datatypeComplementOf
+    :deprecated
+    :differentFrom
+    :disjointUnionOf
+    :disjointWith
+    :distinctMembers
+    :equivalentClass
+    :equivalentProperty
+    :hasKey
+    :hasSelf
+    :hasValue
+    :imports
+    :incompatibleWith
+    :intersectionOf
+    :inverseOf
+    :maxCardinality
+    :maxQualifiedCardinality
+    :members
+    :minCardinality
+    :minQualifiedCardinality
+    :onClass
+    :onDataRange
+    :onDatatype
+    :onProperties
+    :onProperty
+    :oneOf
+    :priorVersion
+    :propertyChainAxiom
+    :propertyDisjointWith
+    :qualifiedCardinality
+    :sameAs
+    :someValuesFrom
+    :sourceIndividual
+    :targetIndividual
+    :targetValue
+    :topDataProperty
+    :topObjectProperty
+    :unionOf
+    :versionIRI
+    :versionInfo
+    :withRestrictions)
 #+END_SRC
 
 *** Dublincore
@@ -165,4 +249,11 @@
     <<incl-macros>>)
 
   <<dcterms>>
+#+END_SRC
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/owl.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.vocabs.owl
+    <<incl-macros>>)
+
+  <<owl>>
 #+END_SRC

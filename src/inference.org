@@ -2,18 +2,22 @@
 
 * Contents                                                         :toc_3_gh:
  - [[#rulebased-inferencing-owl2-rl-subset][Rulebased inferencing (OWL2-RL subset)]]
-     - [[#property-rules][Property rules]]
-     - [[#class-rules][Class rules]]
-     - [[#class-semantics][Class semantics]]
-     - [[#semantics-of-schema-vocabulary][Semantics of Schema Vocabulary]]
+     - [[#rules][Rules]]
+         - [[#property-rules][Property rules]]
+         - [[#class-rules][Class rules]]
+         - [[#class-semantics][Class semantics]]
+         - [[#semantics-of-schema-vocabulary][Semantics of Schema Vocabulary]]
+     - [[#inferencer][Inferencer]]
+     - [[#complete-namespace-definition][Complete namespace definition]]
 
 * Rulebased inferencing (OWL2-RL subset)
 
 - http://www.w3.org/TR/owl2-profiles/#OWL_2_RL
 
-** Property rules
+** Rules
+*** Property rules
 
-#+BEGIN_SRC clojure
+#+BEGIN_SRC clojure :noweb-ref rules
   (def prop-rules
     {:prp-dom   {:q [{:where [['?p (:domain rdfs) '?c]
                               ['?x '?p '?y]]}]
@@ -94,11 +98,12 @@
                               ['?i '?p '?lt]]}]
                  :c false}
      })
+
 #+END_SRC
 
-** Class rules
+*** Class rules
 
-#+BEGIN_SRC clojure
+#+BEGIN_SRC clojure :noweb-ref rules
   (def class-rules
     {:cls-thing     {:q true
                      :c [[(:Thing owl) (:type rdf) (:Class owl)]]}
@@ -194,11 +199,12 @@
 
      :cls-oo        nil ;; TODO
      })
+
 #+END_SRC
 
-** Class semantics
+*** Class semantics
 
-#+BEGIN_SRC clojure
+#+BEGIN_SRC clojure :noweb-ref rules
   (def class-semantics
     {:cax-sco {:q [{:where [['?c1 (:subClassOf rdfs) '?c2]
                             ['?x (:type rdf) '?c1]]}]
@@ -219,11 +225,12 @@
 
      :cax-adc  nil ;; TODO
      })
+
 #+END_SRC
 
-** Semantics of Schema Vocabulary
+*** Semantics of Schema Vocabulary
 
-#+BEGIN_SRC clojure
+#+BEGIN_SRC clojure :noweb-ref rules
   (def schema-rules
     {:scm-cls  {:q [{:where [['?c (:type rdf) (:Class owl)]]}]
                 :c [['?c (:subClassOf rdfs) '?c]
@@ -318,4 +325,27 @@
 
      :scm-uni  nil ;; TODO
      })
+
+#+END_SRC
+
+** Inferencer
+
+#+BEGIN_SRC clojure :noweb-ref inferencer
+
+#+END_SRC
+
+** Complete namespace definition
+
+#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/inference.cljx :noweb yes :mkdirp yes :padline no
+  (ns thi.ng.trio.inference
+    (:require
+     [thi.ng.trio.core :as api]
+     [thi.ng.trio.query :as q]
+     [thi.ng.trio.vocabs.rdf :refer [rdf]]
+     [thi.ng.trio.vocabs.rdfs :refer [rdfs]]
+     [thi.ng.trio.vocabs.owl :refer [owl]]))
+
+  <<rules>>
+
+  <<inferencer>>
 #+END_SRC
