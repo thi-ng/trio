@@ -161,6 +161,39 @@ for more details.
     (rewrite-alias [_ a b]))
 #+END_SRC
 
+*** PModelUpdateHooks
+
+This protocol allows for the injection of middleware during model
+updates. There're two kinds of hooks, pre-commit and post-commit and
+both are triggered for each single triple added or removed.
+
+Each hook is a pair of functions called with the current model
+instance and triple. The first fn is called during an add operation,
+the other during remove.
+
+**** Example
+
+#+BEGIN_SRC clojure
+  (def g
+    (-> (plain-store)
+        (add-post-commit-hook
+         [(fn [g t] (prn :added t))
+          (fn [g t] (prn :removed t))])))
+
+  (add-triple g [:s :p :o])
+  ;; => :added [:s :p :o]
+#+END_SRC
+
+**** Definition
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModelUpdateHooks
+    (add-pre-commit-hook [_ [add remove]])
+    (add-post-commit-hook [_ [add remove]])
+    (remove-pre-commit-hook [_ [add remove]])
+    (remove-post-commit-hook [_ [add remove]]))
+#+END_SRC
+
 ** Helper functions
 
 #+BEGIN_SRC clojure :noweb-ref helpers
