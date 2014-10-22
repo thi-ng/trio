@@ -8,6 +8,7 @@
          - [[#class-semantics][Class semantics]]
          - [[#semantics-of-schema-vocabulary][Semantics of Schema Vocabulary]]
      - [[#inferencer][Inferencer]]
+     - [[#inf-model][Inf model]]
      - [[#complete-namespace-definition][Complete namespace definition]]
 
 * Rulebased inferencing (OWL2-RL subset)
@@ -258,8 +259,8 @@
                 :c [['?p (:subPropertyOf rdfs) '?p]
                     ['?p (:equivalentProperty owl) '?p]]}
 
-     :scm-spo  {:q [{:where [(?p1 (:subPropertyOf rdfs) '?p2)
-                             (?p2 (:subPropertyOf rdfs) '?p3)]}]
+     :scm-spo  {:q [{:where [('?p1 (:subPropertyOf rdfs) '?p2)
+                             ('?p2 (:subPropertyOf rdfs) '?p3)]}]
                 :c [['?p1 (:subPropertyOf rdfs) '?p3]]}
 
      :scm-eqp1 {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]]}]
@@ -331,6 +332,12 @@
 ** Inferencer
 
 #+BEGIN_SRC clojure :noweb-ref inferencer
+
+#+END_SRC
+
+** Inf model
+
+#+BEGIN_SRC clojure :noweb-ref infstore
 
 #+END_SRC
 
