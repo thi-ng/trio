@@ -319,44 +319,44 @@ solutions. Each solution is a map of unique qvar bindings.
 
 ***** Query spec keys
 
-| *Key*       | *Value(s)*                 | *Description*                                                      | *Required* |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :select     | :*, qvar(s), map           | Defines which qvars appear in solution                             | Y          |
-|             |                            | (See [[#result-var-projection--final-filtering][Result var projection]])                                        |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :from       | trio.core/PModel instance  | Default triplestore to use for all sub-queries                     | Y/N        |
-|             |                            | (only mandatory if any sub-query doesn't provide its own =:from=)  |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :query      | [{sub-query} ...]          | Seq of any number of sub-queries (see [[#sub-queries][Sub-queries]])                 | Y          |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :async      | true                       | If true, execute sub-queries asynchronously in parallel             | N          |
-|             |                            | *Note:* Not yet implemented                                        |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :bind       | fn or bindings map         | Inject/transform qvars in final solutions                          | N          |
-|             |                            | (see [[#query-options][Query options]])                                                |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :values     | '{?v1 #{a b} ?v2 c ..}     | Pre-bind qvars to given values for all subqueries                  | N          |
-|             |                            | in order to constrain search.                                      |            |
-|             |                            | If a value set is specified for a qvar, attempts all options given |            |
-|             |                            |                                                                    |            |
-|             |                            | *Note:* The same effect can be achieved with filters,              |            |
-|             |                            | though pre-binding will produce optimized queries                  |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :aggregate  | {?v fn ...}                | Compute aggregate values and inject into solution                  | N          |
-|             |                            | (See [[#result-aggregation--grouping][Result aggregation & grouping]])                                |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :filter     | (fn [res] ..) or {?v fn..} | Filter final solutions                                             | N          |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :order-asc  | '?var                      | Sort solutions by qvar (ascending)                                 | N          |
-|             | '[?v1 ?v2 ..]              | Nested sort by first ?v1, ?v2 ...                                  |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :order-desc | same as =:order-asc=       | Sort solutions by qvar (descending)                                | N          |
-|             |                            |                                                                    |            |
-|-------------+----------------------------+--------------------------------------------------------------------+------------|
-| :group      | '?var                      | Group solutions by qvar                                            | N          |
-|             | (fn [res] group-key)       | Group solutions by return value of fn                              |            |
-|             |                            |                                                                    |            |
-|             |                            | *Note:* returns solutions as map (not as seq)                      |            |
+| *Key*       | *Value(s)*                      | *Description*                                                      | *Required* |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :select     | :*, qvar(s), map                | Defines which qvars appear in solution                             | Y          |
+|             |                                 | (See [[#result-var-projection--final-filtering][Result var projection]])                                        |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :from       | trio.core/PModelSelect instance | Default triplestore to use for all sub-queries                     | Y/N        |
+|             |                                 | (only mandatory if any sub-query doesn't provide its own =:from=)  |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :query      | [{sub-query} ...]               | Seq of any number of sub-queries (see [[#sub-queries][Sub-queries]])                 | Y          |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :async      | true                            | If true, execute sub-queries asynchronously in parallel            | N          |
+|             |                                 | *Note:* Not yet implemented                                        |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :bind       | fn or bindings map              | Inject/transform qvars in final solutions                          | N          |
+|             |                                 | (see [[#query-options][Query options]])                                                |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :values     | '{?v1 #{a b} ?v2 c ..}          | Pre-bind qvars to given values for all subqueries                  | N          |
+|             |                                 | in order to constrain search.                                      |            |
+|             |                                 | If a value set is specified for a qvar, attempts all options given |            |
+|             |                                 |                                                                    |            |
+|             |                                 | *Note:* The same effect can be achieved with filters,              |            |
+|             |                                 | though pre-binding will produce optimized queries                  |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :aggregate  | {?v fn ...}                     | Compute aggregate values and inject into solution                  | N          |
+|             |                                 | (See [[#result-aggregation--grouping][Result aggregation & grouping]])                                |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :filter     | (fn [res] ..) or {?v fn..}      | Filter final solutions                                             | N          |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :order-asc  | '?var                           | Sort solutions by qvar (ascending)                                 | N          |
+|             | '[?v1 ?v2 ..]                   | Nested sort by first ?v1, ?v2 ...                                  |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :order-desc | same as =:order-asc=            | Sort solutions by qvar (descending)                                | N          |
+|             |                                 |                                                                    |            |
+|-------------+---------------------------------+--------------------------------------------------------------------+------------|
+| :group      | '?var                           | Group solutions by qvar                                            | N          |
+|             | (fn [res] group-key)            | Group solutions by return value of fn                              |            |
+|             |                                 |                                                                    |            |
+|             |                                 | *Note:* returns solutions as map (not as seq)                      |            |
 
 ***** Order of processing steps
 
@@ -387,8 +387,8 @@ sub-query dispatch, see below).
      ,#+clj
      :from      #+clj (v/optional
                  (v/alts
-                  [(v/sequential) (v/satisfies api/PModel)]
-                  "must satisfy the thi.ng.trio.core.PModel protocol"))
+                  [(v/satisfies api/PModelSelect) (v/satisfies? api/PModelConvert)]
+                  "must satisfy the PModelSelect or PModelConvert protocol"))
      :query     {:* (v/map)}
      :bind      (v/optional
                  (v/alts
@@ -438,16 +438,16 @@ constructed triples.
 
 ***** Query spec keys
 
-| *Key*      | *Value(s)*                | *Description*                                      | *Required* |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :construct | [pattern ...]             | solutions contain all used qvars                   | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :from      | trio.core/PModel instance | default triplestore to use for all sub-queries     | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :query     | [{sub-query} ...]         | seq of any number of sub-queries (see [[#sub-queries][Sub-queries]]) | yes        |
-|------------+---------------------------+----------------------------------------------------+------------|
-| :bind      | fn or bindings map        | inject/transform qvars in final solutions          | no         |
-|            |                           | (see [[#query-options][Query options]])                                |            |
+| *Key*      | *Value(s)*                      | *Description*                                      | *Required* |
+|------------+---------------------------------+----------------------------------------------------+------------|
+| :construct | [pattern ...]                   | solutions contain all used qvars                   | yes        |
+|------------+---------------------------------+----------------------------------------------------+------------|
+| :from      | trio.core/PModelSelect instance | default triplestore to use for all sub-queries     | yes        |
+|------------+---------------------------------+----------------------------------------------------+------------|
+| :query     | [{sub-query} ...]               | seq of any number of sub-queries (see [[#sub-queries][Sub-queries]]) | yes        |
+|------------+---------------------------------+----------------------------------------------------+------------|
+| :bind      | fn or bindings map              | inject/transform qvars in final solutions          | no         |
+|            |                                 | (see [[#query-options][Query options]])                                |            |
 
 Any other options supported by =:select= will be removed from the
 query spec.
@@ -455,22 +455,24 @@ query spec.
 ***** Implementation
 
 #+BEGIN_SRC clojure :noweb-ref compiler
+  (defn construct-triples
+    [patterns res]
+    (->> res
+         (mapcat
+          (fn [r]
+            (map
+             (fn [[s p o]]
+               (let [s (if (qvar? s) (r s) s)
+                     p (if (qvar? p) (r p) p)
+                     o (if (qvar? o) (r o) o)]
+                 (if (and s p o) (api/triple s p o))))
+             patterns)))
+         (filter identity)
+         (set)))
+
   (defmethod compile-query-step :construct-triples
     [qfn {:keys [construct] :as q} _]
-    (fn [res]
-      (->> res
-           qfn
-           (mapcat
-            (fn [r]
-              (map
-               (fn [[s p o]]
-                 (let [s (if (qvar? s) (r s) s)
-                       p (if (qvar? p) (r p) p)
-                       o (if (qvar? o) (r o) o)]
-                   (if (and s p o) (api/triple s p o))))
-               construct)))
-           (filter identity)
-           (set))))
+    (fn [res] (->> res qfn (construct-triples construct))))
 
   (defmethod compile-query-step :construct
     [qfn q _]
@@ -511,17 +513,17 @@ result set from all graphs.
 
 *Options:*
 
-| *Key*     | *Value(s)*                | *Description*                                              | *Required* |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :describe | '?var                     | select sub-graphs of nodes in the value set of single qvar | yes        |
-|           | '[?v1 ?v2 ...]            | select sub-graphs of given qvar value sets                 |            |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :from     | trio.core/PModel instance | default triplestore to use for all sub-queries             | yes        |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :query    | [{sub-query} ...]         | seq of any number of sub-queries (see [[#sub-queries][Sub queries]])         | yes        |
-|-----------+---------------------------+------------------------------------------------------------+------------|
-| :bind     | fn or bindings map        | inject/transform qvars in final solutions                  | no         |
-|           |                           | (see [[#query-options][Query options]])                                        |            |
+| *Key*     | *Value(s)*                      | *Description*                                              | *Required* |
+|-----------+---------------------------------+------------------------------------------------------------+------------|
+| :describe | '?var                           | select sub-graphs of nodes in the value set of single qvar | yes        |
+|           | '[?v1 ?v2 ...]                  | select sub-graphs of given qvar value sets                 |            |
+|-----------+---------------------------------+------------------------------------------------------------+------------|
+| :from     | trio.core/PModelSelect instance | default triplestore to use for all sub-queries             | yes        |
+|-----------+---------------------------------+------------------------------------------------------------+------------|
+| :query    | [{sub-query} ...]               | seq of any number of sub-queries (see [[#sub-queries][Sub queries]])         | yes        |
+|-----------+---------------------------------+------------------------------------------------------------+------------|
+| :bind     | fn or bindings map              | inject/transform qvars in final solutions                  | no         |
+|           |                                 | (see [[#query-options][Query options]])                                        |            |
 
 Any other options supported by =:select= will be removed from the
 query spec.
@@ -831,7 +833,7 @@ then they're merged with the =:values= bindings of the sub-query
         (let [q (first query)
               from (or (:from q) from)
               q (cond
-                 (satisfies? api/PModel from)
+                 (satisfies? api/PModelSelect from)
                  (assoc q :from from)
                  (satisfies? api/PModelConvert from)
                  (assoc q :from (api/as-model from)))
@@ -1268,7 +1270,7 @@ stringified map of explanations/reasons for each failed key.
 ** Lowlevel query functions
 
 The functions in this section do the actual heavy-lifting and together
-with the =select= method of a triplestore's =PModel= protocol
+with the =select= method of a triplestore's =PModelSelect= protocol
 implementation provide the pattern matching functionality the query
 engine relies on.
 
@@ -1610,11 +1612,17 @@ constrained, initial result set.
           pmap     (unbound-vars-translator bindings vs? vp? vo? t)
           verify   (triple-verifier t vs? vp? vo?)
           flt      (compile-filter-fn (opts :filter))
-          res-fn   (if flt
-                     #(if (verify %)
-                        (let [vbinds (vmap %)]
-                          (if (flt vbinds) vbinds)))
-                     #(if (verify %) (vmap %)))]
+          res-fn   (if (:triples opts)
+                     (if flt
+                       #(if (verify %)
+                          (let [vbinds (vmap %)]
+                            (if (flt vbinds) [vbinds %])))
+                       #(if (verify %) [(vmap %) %]))
+                     (if flt
+                       #(if (verify %)
+                          (let [vbinds (vmap %)]
+                            (if (flt vbinds) vbinds)))
+                       #(if (verify %) (vmap %))))]
       ,#+clj (debug :patterns patterns)
       (loop [acc (transient []), ps patterns]
         (if ps

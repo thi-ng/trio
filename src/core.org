@@ -6,6 +6,7 @@
          - [[#ptripleseq][PTripleSeq]]
          - [[#pmodelconvert][PModelConvert]]
          - [[#pmodel][PModel]]
+         - [[#pmodelselect][PModelSelect]]
          - [[#pdataset][PDataset]]
          - [[#ptripleaccess][PTripleAccess]]
          - [[#paliasmodelsupport][PAliasModelSupport]]
@@ -29,6 +30,7 @@
          - [[#maps][Maps]]
          - [[#sequential-collections][Sequential collections]]
          - [[#protocol-implementations][Protocol implementations]]
+     - [[#clojure-collection-queries-pmodelselect][Clojure collection queries (PModelSelect)]]
      - [[#complete-namespace-definition][Complete namespace definition]]
 
 * Namespace: thi.ng.trio.core
@@ -72,7 +74,6 @@ to act on it.
 
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PModel
-    (select [_] [_ s p o] [_ g s p o])
     (subjects [_])
     (predicates [_])
     (objects [_])
@@ -81,6 +82,13 @@ to act on it.
     (object? [_ x])
     (indexed? [_ x])
     (model-size [_]))
+#+END_SRC
+
+*** PModelSelect
+   
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModelSelect
+    (select [_] [_ s p o] [_ g s p o]))
 #+END_SRC
 
 The =select= method is plays the main role here and is used to perform
@@ -745,6 +753,8 @@ of the code.
     (predicates [_] (keys pos))
     (objects [_] (keys osp))
     (model-size [_] size)
+
+    PModelSelect
     (select [_]
       (select _ nil nil nil))
     (select
@@ -830,6 +840,8 @@ avoid major rewrite operations.
     (predicates [_] (predicates store))
     (objects [_] (objects store))
     (model-size [_] (model-size store))
+
+    PModelSelect
     (select
       [_] (select _ nil nil nil))
     (select
@@ -943,7 +955,7 @@ joins...
               ))
         _))
 
-    PModel
+    PModelSelect
     (select
       [_ s p o]
       (persistent! (select-tg* nodes (ids [s p o]) (transient [])))))
@@ -1021,12 +1033,6 @@ joins...
       (update-in _ [:models g] remove-subject s))
 
     PModel
-    (select [_]
-      (select _ nil nil nil))
-    (select [_ s p o]
-      (mapcat #(select % s p o) (vals models)))
-    (select [_ g s p o]
-      (if-let [g (models g)] (select g s p o)))
     (subject? [_ x]
       (some #(subject? % x) (vals models)))
     (predicate? [_ x]
@@ -1043,6 +1049,14 @@ joins...
       (set (mapcat objects (vals models))))
     (model-size [_]
       (reduce + (map model-size (vals models))))
+
+    PModelSelect
+    (select [_]
+      (select _ nil nil nil))
+    (select [_ s p o]
+      (mapcat #(select % s p o) (vals models)))
+    (select [_ g s p o]
+      (if-let [g (models g)] (select g s p o)))
 
     PDataset
     (update-model [_ id m]
@@ -1155,20 +1169,20 @@ with the =triple-seq-associative= fn.
 
 #+BEGIN_SRC clojure :noweb-ref convert
   (extend-protocol PTripleSeq
-      ,,#+clj  clojure.lang.Sequential
-      ,,#+cljs PersistentVector
-      (triple-seq [_] (triple-seq-sequential _))
-      ,,#+cljs List
-      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
-      ,,#+cljs LazySeq
-      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
-      ,,#+cljs IndexedSeq
-      ,,#+cljs (triple-seq [_] (triple-seq-sequential _))
-      ,,#+clj  clojure.lang.IPersistentMap
-      ,,#+cljs PersistentHashMap
-      (triple-seq [_] (triple-seq-associative _))
-      ,,#+cljs PersistentArrayMap
-      ,,#+cljs (triple-seq [_] (triple-seq-associative _)))
+    ,#+clj  clojure.lang.Sequential
+    ,#+cljs PersistentVector
+    (triple-seq [_] (triple-seq-sequential _))
+    ,#+cljs List
+    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
+    ,#+cljs LazySeq
+    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
+    ,#+cljs IndexedSeq
+    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
+    ,#+clj  clojure.lang.IPersistentMap
+    ,#+cljs PersistentHashMap
+    (triple-seq [_] (triple-seq-associative _))
+    ,#+cljs PersistentArrayMap
+    ,#+cljs (triple-seq [_] (triple-seq-associative _)))
 
   (extend-protocol PModelConvert
     ,#+clj  clojure.lang.Sequential
@@ -1185,6 +1199,44 @@ with the =triple-seq-associative= fn.
     (as-model [_] (apply plain-store (triple-seq-associative _)))
     ,#+cljs PersistentArrayMap
     ,#+cljs (as-model [_] (apply plain-store (triple-seq-associative _))))
+#+END_SRC
+
+** Clojure collection queries (PModelSelect)
+
+#+BEGIN_SRC clojure :noweb-ref coll-select
+  (defn select-from-seq
+    [_ s p o]
+    (-> (if s
+          (if p
+            (if o
+              (fn [[s' p' o']] (and (= s s') (= p p') (= o o')))
+              (fn [[s' p']] (if (= s s') (= p p'))))
+            (if o
+              (fn [[s' _ o']] (if (= s s') (= o o')))
+              (fn [t] (= s (first t)))))
+          (if p
+            (if o
+              (fn [[_ p' o']] (if (= p p') (= o o')))
+              (fn [t] (= p (nth t 1))))
+            (if o
+              (fn [t] (= o (nth t 2)))
+              identity)))
+        (filter _)))
+
+  (extend-protocol PModelSelect
+    ,#+clj  clojure.lang.Sequential
+    ,#+cljs PersistentVector
+    (select [_] (select-from-seq _ nil nil nil))
+    (select [_ s p o] (select-from-seq _ s p o))
+    ,#+cljs List
+    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
+    ,#+cljs (select [_ s p o] (select-from-seq _ s p o))
+    ,#+cljs LazySeq
+    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
+    ,#+cljs (select [_ s p o] (select-from-seq _ s p o))
+    ,#+cljs IndexedSeq
+    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
+    ,#+cljs (select [_ s p o] (select-from-seq _ s p o)))
 #+END_SRC
 
 ** Complete namespace definition
@@ -1216,4 +1268,6 @@ with the =triple-seq-associative= fn.
   <<ctors>>
 
   <<convert>>
+
+  <<coll-select>>
 #+END_SRC
