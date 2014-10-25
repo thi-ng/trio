@@ -387,7 +387,7 @@ sub-query dispatch, see below).
      ,#+clj
      :from      #+clj (v/optional
                  (v/alts
-                  [(v/satisfies api/PModelSelect) (v/satisfies? api/PModelConvert)]
+                  [(v/satisfies api/PModelSelect) (v/satisfies api/PModelConvert)]
                   "must satisfy the PModelSelect or PModelConvert protocol"))
      :query     {:* (v/map)}
      :bind      (v/optional
@@ -1524,7 +1524,7 @@ constrained, initial result set.
   (defn join
     [a b]
     (->> (set/join a b)
-         #_(mapcat
+         (mapcat
           (fn [k]
             (if (unique-bindings? k)
               [k])))))

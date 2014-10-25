@@ -60,7 +60,7 @@
                               ['?x '?p1 '?y]]}]
                  :c [['?x '?p2 '?y]]}
 
-     :prp-spo2  nil ;; TODO requires property chains
+     ;; :prp-spo2  nil ;; TODO requires property chains
 
      :prp-eqp1  {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]
                               ['?x '?p1 '?y]]}]
@@ -75,7 +75,7 @@
                               ['?x '?p2 '?y]]}]
                  :c false}
 
-     :prp-adp   nil ;; TODO required property chains
+     ;; :prp-adp   nil ;; TODO required property chains
 
      :prp-inv1  {:q [{:where [['?p1 (:inverseOf owl) '?p2]
                               ['?x '?p1 '?y]]}]
@@ -85,7 +85,7 @@
                               ['?x '?p2 '?y]]}]
                  :c [['?y '?p1 '?x]]}
 
-     :prp-key   nil ;; TODO required property chains
+     ;; :prp-key   nil ;; TODO required property chains
 
      :prp-npa1  {:q [{:where [['?x (:sourceIndividual owl) '?i1]
                               ['?x (:assertionProperty owl) '?p]
@@ -115,11 +115,11 @@
      :cls-nothing2  {:q [{:where [['?x (:type rdf) (:Nothing owl)]]}]
                      :c false}
 
-     :cls-int1      nil ;; TODO
+     ;; :cls-int1      nil ;; TODO
 
-     :cls-int2      nil ;; TODO
+     ;; :cls-int2      nil ;; TODO
 
-     :cls-uni       nil ;; TODO
+     ;; :cls-uni       nil ;; TODO
 
      :cls-com       {:q [{:where [['?c1 (:complementOf owl) '?c2]
                                   ['?x (:type rdf) '?c1]]}]
@@ -198,7 +198,7 @@
                                   ['?u '?p '?y2]]}]
                      :c [['?y1 (:sameAs owl) '?y2]]}
 
-     :cls-oo        nil ;; TODO
+     ;; :cls-oo        nil ;; TODO
      })
 
 #+END_SRC
@@ -224,7 +224,7 @@
                              ['?x (:type rdf) '?c2]]}]
                 :c false}
 
-     :cax-adc  nil ;; TODO
+     ;; :cax-adc  nil ;; TODO
      })
 
 #+END_SRC
@@ -322,17 +322,101 @@
                              ['?p1 (:subPropertyOf rdfs) '?p2]]}]
                 :c [['?c2 (:subClassOf rdfs) '?c1]]}
 
-     :scm-int  nil ;; TODO
+     ;; :scm-int  nil ;; TODO
 
-     :scm-uni  nil ;; TODO
+     ;; :scm-uni  nil ;; TODO
      })
 
 #+END_SRC
 
 ** Inferencer
 
-#+BEGIN_SRC clojure :noweb-ref inferencer
+#+BEGIN_SRC clojure :noweb-ref helpers
+  (defn pattern-equiv
+    [[s p o] [s' p' o']]
+    (and
+     (if (q/qvar? s) (q/qvar? s') (= s s'))
+     (if (q/qvar? p) (q/qvar? p') (= p p'))
+     (if (q/qvar? o) (q/qvar? o') (= o o'))))
 
+  (defn subsumes?
+    [[s p o] [s' p' o']]
+    (and
+     (or (q/qvar? s) (= s s'))
+     (or (q/qvar? p) (= p p'))
+     (or (q/qvar? o) (= o o'))))
+
+  (defn grounded?
+    [[s p o]] (not (or (q/qvar? s) (q/qvar? p) (q/qvar? o))))
+
+  (defn normalize
+    [t] (mapv #(if (q/qvar? %) nil %) t))
+#+END_SRC
+
+#+BEGIN_SRC clojure
+  (require '[thi.ng.trio.query :as q])
+  (require '[thi.ng.trio.inference :as inf] :reload)
+  (require '[thi.ng.trio.vocabs.rdf :refer [rdf]])
+  (require '[thi.ng.trio.vocabs.rdfs :refer [rdfs]])
+  (require '[thi.ng.trio.vocabs.owl :refer [owl]])
+
+  (def ds
+    (api/as-model
+     [["knows" (:type rdf) (:TransitiveProperty owl)]
+      ["friend" (:subPropertyOf rdfs) "knows"]
+      ["knows" (:domain rdfs) "Person"]
+      ["knows" (:range rdfs) "Person"]
+      [["friend" "knows"] (:type rdf) (:SymmetricProperty owl)]
+      ["a" "knows" "b"]
+      ["b" "friend" "c"]
+      ["c" "knows" "d"]
+      ["e" "friend" "f"]]))
+#+END_SRC
+
+#+BEGIN_SRC clojure :noweb-ref inferencer
+  (defn infer-rule
+    [ds id {:keys [q c]} inf]
+    (let [rule {:construct c :query q}]
+      (loop [ds ds, inf inf]
+        (let [inf' (->> inf
+                        (set/difference (q/query (assoc rule :from ds)))
+                        (filter #(nil? (seq (apply api/select ds %)))))]
+          ,#+clj (debug :inf inf')
+          (if (seq inf')
+            (recur
+             (if id
+               (api/add-triples ds id inf')
+               (api/add-triples ds inf'))
+             (if (< (count inf) (count inf'))
+               (into inf' inf)
+               (into inf inf')))
+            [ds inf])))))
+
+  (defn infer-rules
+    "Takes a PModel or PDataset, a map of rule specs and applies
+    infer-rule to all rules over max-passes. Stops as soon as no new
+    triples can be inferred for any rule. Accepts an optional graph name
+    `g` as target for inferred triples within a PDataSet. Returns 2-elem
+    vector of [updated-model inf-map] where inf-map is a map of inferred
+    triples with rule IDs as their keys."
+    ([ds rules max-passes]
+       (infer-rules ds nil rules max-passes))
+    ([ds g rules max-passes]
+       (loop [state [ds {} false] i 1]
+         (if (> i max-passes)
+           (butlast state)
+           (let [state (reduce
+                        (fn [[ds inf :as state] [id rule]]
+                          ,#+clj (debug :rule id)
+                          (let [[ds inf'] (infer-rule ds g rule #{})]
+                            (if (seq inf')
+                              [ds (assoc inf id (into (or (inf id) #{}) inf')) true]
+                              state)))
+                        (assoc state 2 false) rules)]
+             ,#+clj (debug :pass i :state (peek state))
+             (if (peek state)
+               (recur state (inc i))
+               (butlast state)))))))
 #+END_SRC
 
 ** Inf model
@@ -350,9 +434,13 @@
      [thi.ng.trio.query :as q]
      [thi.ng.trio.vocabs.rdf :refer [rdf]]
      [thi.ng.trio.vocabs.rdfs :refer [rdfs]]
-     [thi.ng.trio.vocabs.owl :refer [owl]]))
+     [thi.ng.trio.vocabs.owl :refer [owl]]
+     [clojure.set :as set]
+     ,#+clj [taoensso.timbre :refer [debug info warn error]]))
 
   <<rules>>
+
+  <<helpers>>
 
   <<inferencer>>
 #+END_SRC
