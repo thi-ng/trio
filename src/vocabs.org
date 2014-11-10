@@ -185,6 +185,26 @@
      (expand-prefixes prefixes p)
      (expand-prefixes prefixes o)))
 
+  (defn find-prefix
+    [prefixes ^String uri]
+    (loop [[[pre puri] & more] (seq prefixes)]
+      (when pre
+        (if (.startsWith uri ^String puri)
+          [pre (subs uri (count puri))]
+          (recur more)))))
+
+  (defn vocabs-from-model
+    [prefixes graph]
+    (->> graph
+         (api/subjects)
+         (reduce
+          (fn [vocabs uri]
+            (let [[p n] (find-prefix prefixes uri)]
+              (if p
+                (assoc-in vocabs [(keyword p) (keyword n)] uri)
+                vocabs)))
+          {})))
+
   (defn triple-seq-with-prefixes
     [prefixes triples]
     (->> triples
@@ -199,32 +219,14 @@
                (io/input-stream)
                (slurp)
                (edn/read-string))]
-      (triple-seq-with-prefixes prefixes triples)))
+      {:prefixes prefixes
+       :triples (triple-seq-with-prefixes prefixes triples)}))
 
   ,#+clj
-  (defn load-vocab-as-model
-    [src] (->> src (load-vocab-triples) (api/as-model)))
-
-
-  (defn find-prefix
-    [prefixes ^String uri]
-    (loop [[[pre puri] & more] (seq prefixes)]
-      (when pre
-        (if (.startsWith uri ^String puri)
-          [pre (subs uri (count puri))]
-          (recur more)))))
-
-  (defn vocabs-from-model
-    [prefixes graph]
-    (->> graph
-         (api/subjects)
-         (reduce
-          (fn [acc uri]
-            (let [[p n] (find-prefix prefixes uri)]
-              (if p
-                (update-in acc [p] (fnil conj []) (keyword n))
-                acc)))
-          {})))
+  (defn load-vocabs-as-model
+    [src]
+    (let [{:keys [prefixes triples]} (load-vocab-triples src)]
+      (vocabs-from-model prefixes (api/as-model triples))))
 
   (defn make-vocab
     [uri xs]
