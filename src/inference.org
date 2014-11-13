@@ -259,8 +259,8 @@
                 :c [['?p (:subPropertyOf rdfs) '?p]
                     ['?p (:equivalentProperty owl) '?p]]}
 
-     :scm-spo  {:q [{:where [('?p1 (:subPropertyOf rdfs) '?p2)
-                             ('?p2 (:subPropertyOf rdfs) '?p3)]}]
+     :scm-spo  {:q [{:where [['?p1 (:subPropertyOf rdfs) '?p2]
+                             ['?p2 (:subPropertyOf rdfs) '?p3]]}]
                 :c [['?p1 (:subPropertyOf rdfs) '?p3]]}
 
      :scm-eqp1 {:q [{:where [['?p1 (:equivalentProperty owl) '?p2]]}]
