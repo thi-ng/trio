@@ -189,7 +189,7 @@
     [prefixes ^String uri]
     (loop [[[pre puri] & more] (seq prefixes)]
       (when pre
-        (if (.startsWith uri ^String puri)
+        (if (== 0 (.indexOf uri ^String puri))
           [pre (subs uri (count puri))]
           (recur more)))))
 
@@ -230,9 +230,7 @@
 
   (defn make-vocab
     [uri xs]
-    (->> xs
-         (map (fn [x] [x (str uri (name x))]))
-         (into {})))
+    (->> xs (map (fn [x] [x (str uri (name x))])) (into {})))
 #+END_SRC
 
 ** Complete namespace definitions
@@ -244,15 +242,16 @@
 
   (defmacro defvocab
     [id uri & xs]
-    `(def ~id (let [xs# (list ~@xs)] (vu/make-vocab ~uri xs#))))
+    (let [voc (vu/make-vocab uri xs)]
+      `(def ~id ~voc)))
 #+END_SRC
 
 #+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/utils.cljx :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.utils
     (:require
      [thi.ng.trio.core :as api]
-     [clojure.java.io :as io]
-     [clojure.edn :as edn]
+     ,#+clj [clojure.java.io :as io]
+     ,#+clj [clojure.edn :as edn]
      [clojure.string :as str]))
 
   <<helpers>>

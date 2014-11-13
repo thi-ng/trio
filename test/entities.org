@@ -6,21 +6,21 @@
 
 #+BEGIN_SRC clojure :noweb-ref tests
   (defentity TestEntity "trio:TestEntity"
-    {:title    {:prop "dcterms:title"
+    {:title    {:prop (:title dcterms)
                 :validate [(v/string)]
                 :default (fn [_] "Untitled")}
-     :creator  {:prop "dcterms:creator"
+     :creator  {:prop (:creator dcterms)
                 :validate [(v/uuid4)]
                 :init (eu/pick-id :creator)}
-     :created  {:prop "dcterms:created"
+     :created  {:prop (:created dcterms)
                 :validate [(v/number) (v/pos)]
                 :default (fn [_] 1000)}
-     :modified {:prop "dcterms:modified"
+     :modified {:prop (:modified dcterms)
                 :validate [(v/number) (v/pos)]
                 :default (fn [_] [1001])
                 :card :*
                 :order :asc}
-     :items    {:prop "dcterms:hasPart"
+     :items    {:prop (:hasPart dcterms)
                 :validate {:* [(v/uuid4)]}
                 :optional true
                 :card :*}})
@@ -55,6 +55,7 @@
      [thi.ng.trio.core :as api]
      [thi.ng.trio.query :as q]
      [thi.ng.trio.utils :as utils]
+     [thi.ng.trio.vocabs.dcterms :refer [dcterms]]
      [thi.ng.trio.entities.utils :as eu]
      ,#+clj  [thi.ng.trio.entities :refer [defentity]]
      ,#+clj  [clojure.test :refer :all]
