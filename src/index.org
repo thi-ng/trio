@@ -247,7 +247,7 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
                                         :pretty-print true}}]
                    :test-commands {"unit-tests" ["phantomjs" :runner "<<cljs-artefact-path>>"]}}
 
-    :pom-addition [:developers [:developer {:id "toxi"}
+    :pom-addition [:developers [:developer
                                 [:name "Karsten Schmidt"]
                                 [:url "http://postspectacular.com"]
                                 [:timezone "0"]]])
