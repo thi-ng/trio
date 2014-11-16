@@ -780,15 +780,6 @@ then they're merged with the =:values= bindings of the sub-query
 **** Implementations
 
 #+BEGIN_SRC clojure :noweb-ref compiler
-  (defn query-step
-    [qfn join-fn {:keys [from values] :as q} patterns]
-    (let [opts (query-opts q)]
-      (fn [res]
-        (let [a (qfn res)
-              b (select-join from values opts patterns)
-              res' (if (= ::empty a) b (join-fn a b))]
-          res'))))
-
   (defmethod compile-query-step :join
     [qfn {:keys [from values where] :as q} _]
     ,#+clj (debug :join where values)
@@ -814,12 +805,24 @@ then they're merged with the =:values= bindings of the sub-query
   (defmethod compile-query-step :optional
     [qfn {:keys [from values optional] :as q} _]
     ,#+clj (debug :join-opt optional values)
-    (query-step qfn join-optional q optional))
+    (let [opts (query-opts q)]
+      (fn [res]
+        (let [a (qfn res)]
+          (if (or (= ::empty a) (seq a))
+            (let [b (select-join from values opts optional)
+                  res' (if (= ::empty a) b (join-optional a b))]
+              res')
+            a)))))
 
   (defmethod compile-query-step :union
     [qfn {:keys [from values union] :as q} _]
     ,#+clj (debug :union union values)
-    (query-step qfn thi.ng.trio.query/union q union))
+    (let [opts (query-opts q)]
+      (fn [res]
+        (let [a (qfn res)
+              b (select-join from values opts union)
+              res' (if (= ::empty a) b (thi.ng.trio.query/union a b))]
+          res'))))
 #+END_SRC
 
 **** Dispatch
