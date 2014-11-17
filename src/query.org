@@ -564,7 +564,7 @@ supports the following sub-query types:
 |---------------+-----------+-----------------------------+-------------------------------------------------|
 | join          | :where    | :from :filter :bind :values | join/intersection of given patterns (fail fast) |
 | join optional | :optional | :from :filter :bind :values | natural join of given patterns                  |
-| union         | :union    | :from :filter :bind :values | add results to existing                         |
+| union         | :union    | :from :filter :bind :values | merge results with existing                     |
 | negation      | :minus    | :from :filter :bind :values | remove results from existing                    |
 
 **** Sub-query ordering
@@ -1551,18 +1551,21 @@ constrained, initial result set.
             (into (apply disj (set a) (persistent! old)) new)
             a)))))
 
-   (defn minus
-     [a b]
-     (let [vars (accumulate-result-vars b)]
-       (reduce-kv
-        (fn [res k v]
-          (let [v (if (coll? v) v [v])]
-            (reduce
-             (fn [res v] (vec (remove (fn [r] (= (r k) v)) res))) res v)))
-        a vars)))
+  (defn minus
+    [a b]
+    (let [vars (accumulate-result-vars b)]
+      (reduce-kv
+       (fn [res k v]
+         (let [v (if (coll? v) v [v])]
+           (reduce
+            (fn [res v] (vec (remove (fn [r] (= (r k) v)) res))) res v)))
+       a vars)))
 
-   (defn union
-     [a b] (set (concat a b)))
+  (defn union
+    [a b]
+    (if (and a b)
+      (mapcat (fn [b'] (map merge a b')) b)
+      (or a b)))
 #+END_SRC
 
 *** Select
