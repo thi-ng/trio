@@ -172,7 +172,7 @@
   (defn expand-pname
     [prefixes x]
     (if (string? x)
-      (let [[[_ p n]] (re-seq #"^([A-Za-z0-9\-_]+):([A-Za-z0-9\-_]+)$" x)]
+      (let [[[_ p n]] (re-seq #"^([A-Za-z0-9\-_]+):([A-Za-z0-9\-_]*)$" x)]
         (if-let [p (prefixes p)]
           (str p n)))))
 
