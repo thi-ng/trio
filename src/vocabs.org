@@ -174,16 +174,18 @@
     (if (string? x)
       (let [[[_ p n]] (re-seq #"^([A-Za-z0-9\-_]+):([A-Za-z0-9\-_]+)$" x)]
         (if-let [p (prefixes p)]
-          (str p n)
-          x))
-      x))
+          (str p n)))))
+
+  (defn expand-pname-maybe
+    [prefixes x]
+    (or (expand-pname prefixes x) x))
 
   (defn expand-pnames-in-triple
     [prefixes [s p o]]
     (api/triple
-     (expand-pname prefixes s)
-     (expand-pname prefixes p)
-     (expand-pname prefixes o)))
+     (expand-pname-maybe prefixes s)
+     (expand-pname-maybe prefixes p)
+     (expand-pname-maybe prefixes o)))
 
   (defn find-prefix
     [prefixes ^String uri]
