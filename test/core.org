@@ -19,14 +19,17 @@
   (defn select-set
     [ds & [s p o]] (set (api/select ds s p o)))
 
+  (defn select-with-alts-set
+    [ds & [s p o]] (set (api/select-with-alts ds s p o)))
+
   (deftest record-conversions
     (let [foo (Foo. 23 42)
           bar (Foo. 42 23)]
-     (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq foo)))
-     (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq [foo])))
-     (is (= [[foo :p2 bar]] (api/triple-seq {foo {:p2 bar}})))
-     (is (= [[23 :p 42] [42 :q 23] [23 :p2 bar] [42 :p2 bar]]
-            (api/triple-seq [foo [[23 42] :p2 bar]])))))
+      (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq foo)))
+      (is (= [[23 :p 42] [42 :q 23]] (api/triple-seq [foo])))
+      (is (= [[foo :p2 bar]] (api/triple-seq {foo {:p2 bar}})))
+      (is (= [[23 :p 42] [42 :q 23] [23 :p2 bar] [42 :p2 bar]]
+             (api/triple-seq [foo [[23 42] :p2 bar]])))))
 
   (deftest conversions
     (let [t1 '[[s1 p o]                   ;; 1
@@ -81,10 +84,58 @@
       ;; ? p o
       (is (= '#{[gemma mother henry]}
              (select-set ds nil 'mother 'henry)))
+      ;; s p o
+      (is (= '#{[gemma mother henry]}
+             (select-set ds 'gemma 'mother 'henry)))
+      ;; n/a
       (is (= #{} (select-set ds 'henry 'friend 'bob)))))
 
+  (defn test-select-with-alts
+    [name ds]
+    (testing
+        (str "testing alt select: " name)
+      ;; select-with-alts
+      ;; s ? ?
+      (is (= '#{[bob friend ed] [bob father fred]}
+             (select-with-alts-set ds 'bob nil nil)))
+      (is (= '#{[bob friend ed] [bob father fred] [fred father inigo] [fred father james]}
+             (select-with-alts-set ds '#{bob fred} nil nil)))
+      ;; ? p ?
+      (is (= '#{[alice mother fred] [alice mother gemma] [gemma mother henry]}
+             (select-with-alts-set ds nil 'mother nil)))
+      (is (= '#{[alice mother fred] [alice mother gemma] [gemma mother henry]
+                [bob father fred] [fred father inigo] [fred father james]}
+             (select-with-alts-set ds nil '#{mother father} nil)))
+      ;; ? ? o
+      (is (= '#{[alice mother fred] [bob father fred]}
+             (select-with-alts-set ds nil nil 'fred)))
+      (is (= '#{[alice mother fred] [bob father fred] [fred father inigo]}
+             (select-with-alts-set ds nil nil '#{fred inigo})))
+      ;; s p ?
+      (is (= '#{[alice mother fred] [alice mother gemma]}
+             (select-with-alts-set ds 'alice 'mother nil)))
+      (is (= '#{[alice mother fred] [alice mother gemma] [bob father fred]}
+             (select-with-alts-set ds '#{alice bob} '#{mother father} nil)))
+      ;; s ? o
+      (is (= '#{[fred father inigo]}
+             (select-with-alts-set ds 'fred nil 'inigo)))
+      (is (= '#{[fred father inigo] [gemma mother henry]}
+             (select-with-alts-set ds '#{fred gemma} nil '#{inigo henry})))
+      ;; ? p o
+      (is (= '#{[gemma mother henry]}
+             (select-with-alts-set ds nil 'mother 'henry)))
+      (is (= '#{[gemma mother henry] [alice mother fred] [alice mother gemma]}
+             (select-with-alts-set ds nil '#{mother friend} '#{henry gemma fred})))
+      ;; s p o
+      (is (= '#{[gemma mother henry]}
+             (select-with-alts-set ds 'gemma 'mother 'henry)))
+      (is (= '#{[bob friend ed] [gemma mother henry]}
+             (select-with-alts-set ds '#{bob gemma} '#{friend mother} '#{ed henry})))))
+
   (deftest plainstore-api
-    (test-store-api "plain-store" (api/as-model g1)))
+    (let [ds (api/as-model g1)]
+      (test-store-api "plain-store" ds)
+      (test-select-with-alts "plain-store" ds)))
 
   (deftest aliasstore-api
     (let [ds  (api/alias-store (api/as-model g1) nil)

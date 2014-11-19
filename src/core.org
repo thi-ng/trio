@@ -88,7 +88,8 @@ to act on it.
    
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PModelSelect
-    (select [_] [_ s p o] [_ g s p o]))
+    (select [_] [_ s p o] [_ g s p o])
+    (select-with-alts [_ s p o] [_ g s p o]))
 #+END_SRC
 
 The =select= method is plays the main role here and is used to perform
@@ -677,20 +678,50 @@ of the code.
 *** Classic 3-index implementation
 
 #+BEGIN_SRC clojure :noweb-ref memstore
+  (defn- select-with-alts-1
+    [coll idx]
+    (->> (set/intersection coll (set (keys idx)))
+         (mapcat #(->> % idx vals (apply concat)))))
+
+  (defn- select-with-alts-2
+    [outer inner idx]
+    (mapcat
+     (fn [o]
+       (let [out (idx o)]
+         (->> (set (keys out))
+              (set/intersection inner)
+              (mapcat out))))
+     outer))
+
+  (defn- select-with-alts-3
+    [outer inner preds idx lookup]
+    (reduce
+     (fn [acc o]
+       (let [out (idx o)]
+         (->> (set (keys out))
+              (set/intersection preds)
+              (reduce
+               (fn [acc p]
+                 (if-let [t (some #(if (inner (lookup %)) %) (out p))]
+                   (conj acc t)
+                   acc))
+               acc))))
+     [] outer))
+
   (defrecord PlainMemoryStore [spo pos osp size]
     PTripleAccess
     (add-triple
       [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil)) _
-        (let [s (get (find spo s) 0 s)
-              p (get (find pos p) 0 p)
-              o (get (find osp o) 0 o)
-              t (Triple. s p o nil)]
-          (PlainMemoryStore.
-           (update-in spo [s p] d/set-conj t)
-           (update-in pos [p o] d/set-conj t)
-           (update-in osp [o s] d/set-conj t)
-           (inc size)))))
+          (let [s (get (find spo s) 0 s)
+                p (get (find pos p) 0 p)
+                o (get (find osp o) 0 o)
+                t (Triple. s p o nil)]
+            (PlainMemoryStore.
+             (update-in spo [s p] d/set-conj t)
+             (update-in pos [p o] d/set-conj t)
+             (update-in osp [o s] d/set-conj t)
+             (inc size)))))
     (add-triples [_ triples]
       (loop [changed? false, spo spo, pos pos, osp osp, size size, xs triples]
         (if xs
@@ -783,9 +814,30 @@ of the code.
             ;; nil nil nil
             (->> spo vals (mapcat vals) (apply concat))))))
 
-  PAliasModelSupport
-  (rewrite-alias
-   [_ a b] (rewrite-alias-naive _ a b)))
+    (select-with-alts
+      [_ s p o]
+      (let [s (if (set? s) (if-not (empty? s) s) (if s #{s}))
+            p (if (set? p) (if-not (empty? p) p) (if p #{p}))
+            o (if (set? o) (if-not (empty? o) o) (if o #{o}))]
+        (if s
+          (if p
+            (if o
+              (select-with-alts-3 s o p spo peek)
+              (select-with-alts-2 s p spo))
+            (if o
+              (select-with-alts-2 o s osp)
+              (select-with-alts-1 s spo)))
+          (if p
+            (if o
+              (select-with-alts-2 p o pos)
+              (select-with-alts-1 p pos))
+            (if o
+              (select-with-alts-1 o osp)
+              (->> spo vals (mapcat vals) (apply concat)))))))
+
+    PAliasModelSupport
+    (rewrite-alias
+      [_ a b] (rewrite-alias-naive _ a b)))
 #+END_SRC
 
 *** Store with alias support
@@ -1248,6 +1300,7 @@ with the =triple-seq-associative= fn.
      [thi.ng.common.data.core :as d]
      [thi.ng.common.data.unionfind :as u]
      [thi.ng.common.error :as err]
+     [clojure.set :as set]
      ,#+clj [clojure.pprint]
      ,#+clj [clojure.core.protocols :as cp]))
 
