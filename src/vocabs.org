@@ -169,21 +169,21 @@
 ** Vocab construction helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (defn expand-prefixes
+  (defn expand-pname
     [prefixes x]
     (if (string? x)
-      (let [[p n] (str/split x #":")]
+      (let [[[_ p n]] (re-seq #"^([A-Za-z0-9\-_]+):([A-Za-z0-9\-_]+)$" x)]
         (if-let [p (prefixes p)]
           (str p n)
           x))
       x))
 
-  (defn expand-prefixes-in-triple
+  (defn expand-pnames-in-triple
     [prefixes [s p o]]
     (api/triple
-     (expand-prefixes prefixes s)
-     (expand-prefixes prefixes p)
-     (expand-prefixes prefixes o)))
+     (expand-pname prefixes s)
+     (expand-pname prefixes p)
+     (expand-pname prefixes o)))
 
   (defn find-prefix
     [prefixes ^String uri]
@@ -209,7 +209,7 @@
     [prefixes triples]
     (->> triples
          (api/triple-seq)
-         (mapv #(expand-prefixes-in-triple prefixes %))))
+         (mapv #(expand-pnames-in-triple prefixes %))))
 
   ,#+clj
   (defn load-vocab-triples
