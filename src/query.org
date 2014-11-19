@@ -1416,7 +1416,7 @@ constrained, initial result set.
                            (= ts tp) (fn [r] (and (= (r 0) (r 1)) (not= (r 0) (r 2))))
                            (= ts to) (fn [r] (and (= (r 0) (r 2)) (not= (r 0) (r 1))))
                            (= tp to) (fn [r] (and (= (r 1) (r 2)) (not= (r 0) (r 1))))
-                           :default (constantly true))
+                           :else (constantly true))
      (and vars varp)      (if (= ts tp)
                             (fn [r] (= (r 0) (r 1)))
                             (fn [r] (not= (r 0) (r 1))))
@@ -1426,7 +1426,7 @@ constrained, initial result set.
      (and varp varo)      (if (= tp to)
                             (fn [r] (= (r 1) (r 2)))
                             (fn [r] (not= (r 1) (r 2))))
-     :default             (constantly true)))
+     :else                (constantly true)))
 #+END_SRC
 
 **** Result handling
@@ -1610,6 +1610,38 @@ constrained, initial result set.
           (fn [p] (assoc p 2 nil))
           identity))))
 
+  (defn select-with-bindings-alts
+    [ds bindings opts [s p o :as t]]
+    (let [vs?      (qvar? s), vp? (qvar? p), vo? (qvar? o)
+          vmap     (bind-translator vs? vp? vo? t)
+          verify   (triple-verifier t vs? vp? vo?)
+          flt      (compile-filter-fn (opts :filter))
+          res-fn   (if (:triples opts)
+                     (if flt
+                       #(if (verify %)
+                          (let [vbinds (vmap %)]
+                            (if (flt vbinds) [vbinds %])))
+                       #(if (verify %) [(vmap %) %]))
+                     (if flt
+                       #(if (verify %)
+                          (let [vbinds (vmap %)]
+                            (if (flt vbinds) vbinds)))
+                       #(if (verify %) (vmap %))))
+          qs (if vs? (bindings s) s)
+          qp (if vp? (bindings p) p)
+          qo (if vo? (bindings o) o)
+          ,#+clj _ #+clj (debug :select-alt qs qp qo)
+          res (api/select-with-alts ds qs qp qo)]
+      ,#+clj (debug :res-raw res)
+      (if (seq res)
+        (loop [acc (transient []), res res]
+          (if res
+            (let [r (res-fn (first res))]
+              (if r
+                (recur (conj! acc r) (next res))
+                (recur acc (next res))))
+            (persistent! acc))))))
+
   (defn select-with-bindings
     [ds bindings opts [s p o :as t]]
     (let [patterns (produce-patterns-with-bound-vars t bindings)
@@ -1661,7 +1693,7 @@ constrained, initial result set.
            (loop [res res, ps ps]
              (if ps
                (let [binds (merge-with into (accumulate-result-vars res) bindings)
-                     r' (select-with-bindings ds binds {} (first ps))
+                     r' (select-with-bindings-alts ds binds {} (first ps))
                      res (if (seq r') (join-fn res r'))]
                  (if (seq res)
                    (recur res (next ps))))
