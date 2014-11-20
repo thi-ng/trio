@@ -26,6 +26,7 @@
      - [[#multi-store-dataset][Multi-store dataset]]
          - [[#type-implementation][Type implementation]]
          - [[#constructor][Constructor]]
+     - [[#regexp-triple-search][Regexp triple search]]
      - [[#clojure-collection-conversion][Clojure collection conversion]]
          - [[#maps][Maps]]
          - [[#sequential-collections][Sequential collections]]
@@ -838,19 +839,6 @@ of the code.
     PAliasModelSupport
     (rewrite-alias
       [_ a b] (rewrite-alias-naive _ a b)))
-
-  (defn regexp?
-    [x] (instance? #+clj java.util.regex.Pattern #+cljs js/RegExp x))
-
-  (defn regexp-matches
-    [ds f x] (into #{} (filter #(re-find x %) (f ds))))
-
-  (defn search
-    [ds s p o]
-    (->> [s p o]
-         (map #(if (regexp? %2) (regexp-matches ds % %2) %2)
-              [subjects predicates objects])
-         (apply select-with-alts ds)))
 #+END_SRC
 
 *** Store with alias support
@@ -1140,6 +1128,46 @@ joins...
     (PlainDataset. (assoc models :default (plain-store))))
 #+END_SRC
 
+** Regexp triple search
+
+Whereas =select-with-alts= enables the pre-constrained search of
+triples using sets of possible values for each SPO, the =search=
+function below allows us to specify search patterns using Regular
+Expressions. Different patterns can be given for S, P, O and =nil=
+values indicate a "match-all" wildcard (just as with =select= &
+=select-with-alts=). For example:
+
+#+BEGIN_SRC clojure
+  (def g (as-model '[[karsten nick toxi] [mia nickname miaki] [nicolas nic nick]]))
+
+  (search g nil #"nick.*" nil)
+  ;; => ([karsten nick toxi] [giedre nickname mia])
+
+  ;; [nicolas nic nick] is not matched, since the `nic` pred is misspelled
+#+END_SRC
+
+The actual =search= function is using =select-with-alts= itself and
+acts merely as a pre-processing step to build up value sets based on
+regexp matches. *Note:* Non-string values are cast to strings in order to
+apply the regexps.
+
+#+BEGIN_SRC clojure :noweb-ref search
+  (defn regexp?
+    [x] (instance? #+clj java.util.regex.Pattern #+cljs js/RegExp x))
+
+  (defn regexp-matches
+    [ds f re]
+    ;;(into #{} (filter #(if (string? %) (re-find x %)) (f ds)))
+    (into #{} (filter #(re-find re (if (string? %) % (str %))) (f ds))))
+
+  (defn search
+    [ds s p o]
+    (->> [s p o]
+         (map #(if (regexp? %2) (regexp-matches ds % %2) %2)
+              [subjects predicates objects])
+         (apply select-with-alts ds)))
+#+END_SRC
+
 ** Clojure collection conversion
 
 Using the =PTripleSeq= and =PModelConvert= protocols defined above, we
@@ -1332,6 +1360,8 @@ with the =triple-seq-associative= fn.
   <<dataset>>
 
   <<ctors>>
+
+  <<search>>
 
   <<convert>>
 
