@@ -838,6 +838,19 @@ of the code.
     PAliasModelSupport
     (rewrite-alias
       [_ a b] (rewrite-alias-naive _ a b)))
+
+  (defn regexp?
+    [x] (instance? #+clj java.util.regex.Pattern #+cljs js/RegExp x))
+
+  (defn regexp-matches
+    [ds f x] (into #{} (filter #(re-find x %) (f ds))))
+
+  (defn search
+    [ds s p o]
+    (->> [s p o]
+         (map #(if (regexp? %2) (regexp-matches ds % %2) %2)
+              [subjects predicates objects])
+         (apply select-with-alts ds)))
 #+END_SRC
 
 *** Store with alias support
