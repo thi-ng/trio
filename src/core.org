@@ -1152,6 +1152,7 @@ regexp matches. *Note:* Non-string values are cast to strings in order to
 apply the regexps.
 
 #+BEGIN_SRC clojure :noweb-ref search
+  ;; http://stackoverflow.com/questions/4339288/typeof-for-regexp
   (defn regexp?
     [x] (instance? #+clj java.util.regex.Pattern #+cljs js/RegExp x))
 

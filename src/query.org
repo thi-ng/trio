@@ -831,7 +831,7 @@ then they're merged with the =:values= bindings of the sub-query
   (defmethod compile-query-step :query-dispatch
     [qfn {:keys [from values query]} _]
     ,#+clj (debug :query-dispatch query)
-    (loop [qfn qfn, query query]
+    (loop [qfn qfn, query query, first? true]
       (if query
         (let [q (first query)
               from (or (:from q) from)
@@ -843,12 +843,14 @@ then they're merged with the =:values= bindings of the sub-query
               q (if values
                   (assoc q :values (merge-with (fnil into #{}) values (:values q)))
                   (update-in q [:values] (fnil identity {})))
+              _ (when (and first? (seq (select-keys q [:optional :minus :union])))
+                  (err/illegal-arg! "First sub-query type must be of type :where"))
               qfn (cond
                    (:where q)    (compile-query-step qfn q :join)
                    (:optional q) (compile-query-step qfn q :optional)
                    (:minus q)    (compile-query-step qfn q :minus)
                    (:union q)    (compile-query-step qfn q :union))]
-          (recur qfn (next query)))
+          (recur qfn (next query) false))
         qfn)))
 #+END_SRC
 
@@ -1563,9 +1565,8 @@ constrained, initial result set.
 
   (defn union
     [a b]
-    (if (and a b)
-      (mapcat (fn [b'] (map merge a b')) b)
-      (or a b)))
+    (debug :union-ab a b)
+    (concat a b))
 #+END_SRC
 
 *** Select
@@ -1632,7 +1633,6 @@ constrained, initial result set.
           qo (if vo? (bindings o) o)
           ,#+clj _ #+clj (debug :select-alt qs qp qo)
           res (api/select-with-alts ds qs qp qo)]
-      ,#+clj (debug :res-raw res)
       (if (seq res)
         (loop [acc (transient []), res res]
           (if res
