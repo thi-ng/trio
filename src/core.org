@@ -109,9 +109,40 @@ This protocol allows for the injection of middleware during model
 updates. There're two kinds of hooks, pre-commit and post-commit and
 both are triggered for each single triple added or removed.
 
-Each hook is a pair of functions called with the current model
-instance and triple. The first fn is called during an add operation,
-the other during remove.
+Each hook is a function accepting 4 args:
+
+- commit type (=:add= or =:remove=)
+- watched store/model
+- triple to add/remove
+- watch ID
+
+**** Pre-commit hooks
+
+Pre-commit hooks are *always* called, irrespectively of the triple
+being already present in the store (when attempting to add) or missing
+(during remove). A pre-commit hook *must* return a triple (e.g. the
+passed arg) to signal success or =nil= to indicate the add/remove op
+should be canceled. This convention therefore allows hooks to be used
+as triple verifiers or transformers.
+
+Since hooks are stored in a map, their call order is undefined.
+Subsequent hooks will receive as triple arg the result of earlier
+hooks invoked. The model operation (add/remove) will only succeed if
+all hooks have returned a triple. If any hook fails, the model remains
+untouched.
+
+**** Post-commit hooks
+
+Post-commit hooks are only called if a triple has actually been added
+or removed from the model. Furthermore, these hooks *must* return a
+model instance (usually the passed arg) to signal success or =nil= to
+indicate failure and cancel the model operation. This allows
+post-commit hooks to further validate and/or transform the model (e.g.
+add additional triples to the watched model without invoking any
+hooks).
+
+Apart from that post-hooks follow the same calling order and
+all-or-nothing convention as described above for pre-commit hooks.
 
 **** Example
 
@@ -119,11 +150,16 @@ the other during remove.
   (def g
     (-> (plain-store)
         (watched-model)
+        ;; this hook stringifies all triples elements
+        (add-pre-commit-hook
+         :stringify (fn [_ _ triple _] (mapv str triple)))
+        ;; trace successful additions/removals
         (add-post-commit-hook
-         :trace (fn [type model triple id] (prn id type triple) model))))
+         :trace (fn [type model triple id] (prn id type triple) model))
 
-  (add-triple g [:s :p :o])
-  ;; => :trace :add [:s :p :o]
+        (add-triple '[s p o])))
+  ;; => :trace :add ["s" "p" "o"]
+  ;; => #'user/g
 #+END_SRC
 
 **** Definition
@@ -1211,11 +1247,23 @@ joins...
             (if m' (assoc _ :model m') _))
           _)))
     (add-triples
-      [_ triples])
+      [_ triples]
+      (reduce add-triple model triples))
     (remove-triple
-      [_ t])
+      [_ t]
+      (let [t (reduce-kv
+               (fn [t k v] (if-let [t' (v :remove model t k)] t' (reduced nil)))
+               t pre-hooks)]
+        (if (seq (apply select model t))
+          (let [m' (remove-triple model t)
+                m' (reduce-kv
+                    (fn [m k v] (if-let [m' (v :remove m t k)] m' (reduced nil)))
+                    m' post-hooks)]
+            (if m' (assoc _ :model m') _))
+          _)))
     (remove-triples
-      [_ triples])
+      [_ triples]
+      (reduce add-triple model triples))
     (update-triple
       [_ t t'])
     (remove-subject
