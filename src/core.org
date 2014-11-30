@@ -946,10 +946,11 @@ joins...
   (defprotocol PGraph
     (add-node [_ n] [_ n parents])
     (get-node [_ t])
+    (get-node-for-id [_ id])
     (get-ids [_])
     (get-nodes [_]))
 
-  (deftype TripleNode [triple ^:volatile-mutable children]
+  (deftype TripleNode [triple ^:unsynchronized-mutable children]
     PNode
     (get-children [_] children)
     (add-child [_ c] (set! children (conj (or children #{}) c)) _)
@@ -982,6 +983,8 @@ joins...
         g))
     (get-node
       [_ t] (nodes (ids t)))
+    (get-node-for-id
+      [_ id] (nodes id))
 
     PTripleAccess
     (add-triple
@@ -1010,18 +1013,21 @@ joins...
 
     PModelSelect
     (select
+      [_] (select _ nil nil nil))
+    (select
       [_ s p o]
-      (persistent! (select-tg* nodes (ids [s p o]) (transient [])))))
-
-  (defn- select-tg*
-    [nodes id acc]
-    (let [^TripleNode n (nodes id)]
-      (if n
-        (let [c (get-children n)]
-          (if c
-            (reduce #(select-tg* nodes %2 %) acc c)
-            (conj! acc (.-triple n))))
-        acc)))
+      (if-let [id (ids (triple s p o))]
+        (loop [acc (transient [])
+               ids (conj clojure.lang.PersistentQueue/EMPTY id)]
+          (if (seq ids)
+            (let [^TripleNode n (nodes (peek ids))]
+              (if n
+                (let [c (get-children n)]
+                  (if c
+                    (recur acc (into (pop ids) c))
+                    (recur (conj! acc (.-triple n)) (pop ids))))
+                (persistent! acc)))
+            (persistent! acc))))))
 
   (defn triple-graph
     []
