@@ -1020,13 +1020,11 @@ joins...
         (loop [acc (transient [])
                ids (conj clojure.lang.PersistentQueue/EMPTY id)]
           (if (seq ids)
-            (let [^TripleNode n (nodes (peek ids))]
-              (if n
-                (let [c (get-children n)]
-                  (if c
-                    (recur acc (into (pop ids) c))
-                    (recur (conj! acc (.-triple n)) (pop ids))))
-                (persistent! acc)))
+            (let [^TripleNode n (nodes (peek ids))
+                  c (get-children n)]
+              (if c
+                (recur acc (into (pop ids) c))
+                (recur (conj! acc (.-triple n)) (pop ids))))
             (persistent! acc))))))
 
   (defn triple-graph
