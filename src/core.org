@@ -6,11 +6,11 @@
          - [[#ptripleseq][PTripleSeq]]
          - [[#pmodelconvert][PModelConvert]]
          - [[#pmodel][PModel]]
+         - [[#pmodelupdate][PModelUpdate]]
+         - [[#pmodelwatch][PModelWatch]]
          - [[#pmodelselect][PModelSelect]]
          - [[#pdataset][PDataset]]
-         - [[#ptripleaccess][PTripleAccess]]
          - [[#paliasmodelsupport][PAliasModelSupport]]
-         - [[#pmodelupdatehooks][PModelUpdateHooks]]
      - [[#helper-functions][Helper functions]]
      - [[#triple-datatype][Triple datatype]]
          - [[#templates][Templates]]
@@ -25,6 +25,8 @@
          - [[#constructors][Constructors]]
      - [[#multi-store-dataset][Multi-store dataset]]
          - [[#type-implementation][Type implementation]]
+         - [[#constructor][Constructor]]
+     - [[#watched-model-wrapper][Watched model wrapper]]
          - [[#constructor][Constructor]]
      - [[#regexp-triple-search][Regexp triple search]]
      - [[#clojure-collection-conversion][Clojure collection conversion]]
@@ -85,6 +87,55 @@ to act on it.
     (model-size [_]))
 #+END_SRC
 
+*** PModelUpdate
+
+This protocol defines accessors to add, update and remove triples from
+a store. Bulk operations are defined, in order to allow optimized
+implementations relying on connections to external storage layers.
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModelUpdate
+    (add-triple [_ s] [_ g s])
+    (add-triples [_ triples] [_ g triples])
+    (remove-triple [_ s] [_ g s])
+    (remove-triples [_ triples] [_ g triples])
+    (update-triple [_ s s'] [_ g s s'])
+    (remove-subject [_ s] [_ g s]))
+#+END_SRC
+
+*** PModelWatch
+
+This protocol allows for the injection of middleware during model
+updates. There're two kinds of hooks, pre-commit and post-commit and
+both are triggered for each single triple added or removed.
+
+Each hook is a pair of functions called with the current model
+instance and triple. The first fn is called during an add operation,
+the other during remove.
+
+**** Example
+
+#+BEGIN_SRC clojure
+  (def g
+    (-> (plain-store)
+        (watched-model)
+        (add-post-commit-hook
+         :trace (fn [type model triple id] (prn id type triple) model))))
+
+  (add-triple g [:s :p :o])
+  ;; => :trace :add [:s :p :o]
+#+END_SRC
+
+**** Definition
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PModelWatch
+    (add-pre-commit-hook [_ id f])
+    (add-post-commit-hook [_ id f])
+    (remove-pre-commit-hook [_ id])
+    (remove-post-commit-hook [_ id]))
+#+END_SRC
+
 *** PModelSelect
    
 #+BEGIN_SRC clojure :noweb-ref protos
@@ -143,22 +194,6 @@ directly query a specific model, rather than all.
     (get-model [_ id]))
 #+END_SRC
 
-*** PTripleAccess
-
-This protocol defines accessors to add, update and remove triples from
-a store. Bulk operations are defined, in order to allow optimized
-implementations relying on connections to external storage layers.
-
-#+BEGIN_SRC clojure :noweb-ref protos
-  (defprotocol PTripleAccess
-    (add-triple [_ s] [_ g s])
-    (add-triples [_ triples] [_ g triples])
-    (remove-triple [_ s] [_ g s])
-    (remove-triples [_ triples] [_ g triples])
-    (update-triple [_ s s'] [_ g s s'])
-    (remove-subject [_ s] [_ g s]))
-#+END_SRC
-
 *** PAliasModelSupport
 
 This is an experimental feature to support triplestore implementations
@@ -169,39 +204,6 @@ for more details.
 #+BEGIN_SRC clojure :noweb-ref protos
   (defprotocol PAliasModelSupport
     (rewrite-alias [_ a b]))
-#+END_SRC
-
-*** PModelUpdateHooks
-
-This protocol allows for the injection of middleware during model
-updates. There're two kinds of hooks, pre-commit and post-commit and
-both are triggered for each single triple added or removed.
-
-Each hook is a pair of functions called with the current model
-instance and triple. The first fn is called during an add operation,
-the other during remove.
-
-**** Example
-
-#+BEGIN_SRC clojure
-  (def g
-    (-> (plain-store)
-        (add-post-commit-hook
-         [(fn [g t] (prn :added t))
-          (fn [g t] (prn :removed t))])))
-
-  (add-triple g [:s :p :o])
-  ;; => :added [:s :p :o]
-#+END_SRC
-
-**** Definition
-
-#+BEGIN_SRC clojure :noweb-ref protos
-  (defprotocol PModelUpdateHooks
-    (add-pre-commit-hook [_ [add remove]])
-    (add-post-commit-hook [_ [add remove]])
-    (remove-pre-commit-hook [_ [add remove]])
-    (remove-post-commit-hook [_ [add remove]]))
 #+END_SRC
 
 ** Helper functions
@@ -671,7 +673,7 @@ of the code.
 #+BEGIN_SRC clojure :noweb-ref triple
   (defn triple
     ([s p o] (Triple. s p o nil))
-    ([t] (if (instance? Triple t) t (let [[s p o] t] (Triple. s p o nil)))))
+    ([t] (if (instance? Triple t) t (Triple. (first t) (nth t 1) (nth t 2) nil))))
 #+END_SRC
 
 ** In-memory stores
@@ -710,7 +712,7 @@ of the code.
      [] outer))
 
   (defrecord PlainMemoryStore [spo pos osp size]
-    PTripleAccess
+    PModelUpdate
     (add-triple
       [_ [s p o :as t]]
       (if (-> spo (get s nil) (get p nil) (get t nil)) _
@@ -862,7 +864,7 @@ avoid major rewrite operations.
 
 #+BEGIN_SRC clojure :noweb-ref alias-store
   (defrecord AliasMemoryStore [store aliases]
-    PTripleAccess
+    PModelUpdate
     (add-triple
       [_ [s p o]]
       (let [t [(or (u/canonical aliases s) s)
@@ -941,7 +943,8 @@ joins...
   (defprotocol PNode
     (get-children [_])
     (add-child [_ c])
-    (remove-child [_ c]))
+    (remove-child [_ c])
+    (is-leaf? [_]))
 
   (defprotocol PGraph
     (add-node [_ n] [_ n parents])
@@ -952,16 +955,21 @@ joins...
 
   (deftype TripleNode [triple ^:unsynchronized-mutable children]
     PNode
-    (get-children [_] children)
-    (add-child [_ c] (set! children (conj (or children #{}) c)) _)
-    (remove-child [_ c] (set! children (disj children c)) _)
+    (get-children
+      [_] children)
+    (add-child
+      [_ c] (set! children (conj (or children #{}) c)) _)
+    (remove-child
+      [_ c] (set! children (disj children c)) _)
+    (is-leaf?
+      [_] (and (first triple) (nth triple 1) (nth triple 2)))
 
     Object
     (toString [_] (str (pr-str triple) " " (pr-str children))))
 
   (declare select-tg*)
 
-  (deftype TripleGraph [nodes ids next-id]
+  (deftype TripleGraph [nodes ids next-id size]
     Object
     (toString
       [_] (str ":nodes " (pr-str nodes)
@@ -976,7 +984,8 @@ joins...
       (let [g (TripleGraph.
                (assoc nodes next-id n)
                (assoc ids (.-triple  ^TripleNode n) next-id)
-               (inc next-id))]
+               (inc next-id)
+               (if (is-leaf? n) (inc size) size))]
         (when (seq parents)
           (doseq [^TripleNode p parents]
             (add-child p next-id)))
@@ -986,12 +995,30 @@ joins...
     (get-node-for-id
       [_ id] (nodes id))
 
-    PTripleAccess
+    PModel
+    (subject?
+      [_ x])
+    (predicate?
+      [_ x])
+    (object?
+      [_ x])
+    (indexed?
+      [_ x])
+    (subjects
+      [_])
+    (predicates
+      [_])
+    (objects
+      [_])
+    (model-size
+      [_] size)
+
+    PModelUpdate
     (add-triple
       [_ [s p o :as t]]
       (if-not (ids t)
         (let [id (.-next-id _)
-              ^TripleGraph g (add-node _ (TripleNode. t nil) nil)
+              ^TripleGraph g (add-node _ (TripleNode. (Triple. s p o nil) nil) nil)
               index-branch (fn [g patterns]
                              (loop [^TripleGraph g g, id id, ps patterns]
                                (if ps
@@ -1001,14 +1028,13 @@ joins...
                                        (add-child ^TripleNode ((.-nodes g) id') id)
                                        g)
                                      (recur
-                                      (add-node g (TripleNode. (first ps) #{id}) nil)
+                                      (add-node g (TripleNode. (triple (first ps)) #{id}) nil)
                                       (.-next-id g)
                                       (next ps))))
                                  g)))]
           (-> (index-branch g [[s p nil] [s nil nil] [nil nil nil]])
               (index-branch [[nil p o] [nil p nil]])
-              (index-branch [[s nil o] [nil nil o]])
-              ))
+              (index-branch [[s nil o] [nil nil o]])))
         _))
 
     PModelSelect
@@ -1030,8 +1056,9 @@ joins...
   (defn triple-graph
     []
     (let [root (TripleNode. [nil nil nil] nil)]
-      (add-node (TripleGraph. {} {} 0) root)))
+      (add-node (TripleGraph. {} {} 0 0) root)))
 #+END_SRC
+
 **** Old add-triple (ignore)
 #+BEGIN_SRC clojure
   (add-triple
@@ -1050,6 +1077,7 @@ joins...
                     [_ n] (let [n (index-node [s nil o])] [(add-node _ n [t1o]) n]))]
      (add-node _ (index-node t) [t2sp t2so t2po])))
 #+END_SRC
+
 *** Constructors
 #+BEGIN_SRC clojure :noweb-ref ctors
   (defn plain-store
@@ -1067,7 +1095,7 @@ joins...
 
 #+BEGIN_SRC clojure :noweb-ref dataset
   (defrecord PlainDataset [models]
-    PTripleAccess
+    PModelUpdate
     (add-triple [_ s]
       (add-triple _ :default s))
     (add-triple [_ g s]
@@ -1130,6 +1158,83 @@ joins...
   (defn plain-dataset
     [& {:as models}]
     (PlainDataset. (assoc models :default (plain-store))))
+#+END_SRC
+
+** Watched model wrapper
+
+#+BEGIN_SRC clojure :noweb-ref watched-model
+  (defrecord WatchedModel
+      [model pre-hooks post-hooks]
+    PModelWatch
+    (add-pre-commit-hook
+      [_ id hook-fn]
+      (assoc-in _ [:pre-hooks id] hook-fn))
+    (remove-pre-commit-hook
+      [_ id]
+      (update-in _ [:pre-hooks] dissoc id))
+    (add-post-commit-hook
+      [_ id hook-fn]
+      (assoc-in _ [:post-hooks id] hook-fn))
+    (remove-post-commit-hook
+      [_ id]
+      (update-in _ [:post-hooks] dissoc id))
+
+    PModel
+    (subject?
+      [_ x] (subject? model x))
+    (predicate?
+      [_ x] (predicate? model x))
+    (object?
+      [_ x] (object? model x))
+    (indexed?
+      [_ x] (indexed? model x))
+    (subjects
+      [_] (subjects model))
+    (predicates
+      [_] (predicates model))
+    (objects
+      [_] (objects model))
+    (model-size
+      [_] (model-size model))
+
+    PModelUpdate
+    (add-triple
+      [_ t]
+      (let [t (reduce-kv
+               (fn [t k v] (if-let [t' (v :add model t k)] t' (reduced nil)))
+               t pre-hooks)]
+        (if-not (seq (apply select model t))
+          (let [m' (add-triple model t)
+                m' (reduce-kv
+                    (fn [m k v] (if-let [m' (v :add m t k)] m' (reduced nil)))
+                    m' post-hooks)]
+            (if m' (assoc _ :model m') _))
+          _)))
+    (add-triples
+      [_ triples])
+    (remove-triple
+      [_ t])
+    (remove-triples
+      [_ triples])
+    (update-triple
+      [_ t t'])
+    (remove-subject
+      [_ s])
+
+    PModelSelect
+    (select
+      [_] (select model nil nil nil))
+    (select
+      [_ s p o] (select model s p o))
+    (select-with-alts
+      [_ s p o] (select-with-alts model s p o)))
+#+END_SRC
+
+*** Constructor
+
+#+BEGIN_SRC clojure :noweb-ref watched-model
+  (defn watched-model
+   [model] (WatchedModel. model {} {}))
 #+END_SRC
 
 ** Regexp triple search
@@ -1363,6 +1468,8 @@ with the =triple-seq-associative= fn.
   <<alias-store>>
 
   <<dataset>>
+
+  <<watched-model>>
 
   <<ctors>>
 
