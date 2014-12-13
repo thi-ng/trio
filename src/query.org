@@ -1577,7 +1577,7 @@ constrained, initial result set.
 
   (defn union
     [a b]
-    (debug :union-ab a b)
+    ,#+clj (debug :union-ab a b)
     (concat a b))
 #+END_SRC
 
