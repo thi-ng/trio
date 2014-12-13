@@ -1080,7 +1080,7 @@ joins...
       [_ s p o]
       (if-let [id (ids (triple s p o))]
         (loop [acc (transient [])
-               ids (conj clojure.lang.PersistentQueue/EMPTY id)]
+               ids (conj #+clj clojure.lang.PersistentQueue/EMPTY #+cljs cljs.core.PersistentQueue.EMPTY id)]
           (if (seq ids)
             (let [^TripleNode n (nodes (peek ids))
                   c (get-children n)]
@@ -1309,9 +1309,7 @@ regexp matches. *Note:* Non-string values are cast to strings in order to
 apply the regexps.
 
 #+BEGIN_SRC clojure :noweb-ref search
-  ;; http://stackoverflow.com/questions/4339288/typeof-for-regexp
-  (defn regexp?
-    [x] (instance? #+clj java.util.regex.Pattern #+cljs js/RegExp x))
+  #+clj (defn regexp? [x] (instance? java.util.regex.Pattern x))
 
   (defn regexp-matches
     [ds f re]
