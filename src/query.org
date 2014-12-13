@@ -387,8 +387,9 @@ sub-query dispatch, see below).
      ,#+clj
      :from      #+clj (v/optional
                  (v/alts
-                  [(v/satisfies api/PModelSelect) (v/satisfies api/PModelConvert)]
-                  "must satisfy the PModelSelect or PModelConvert protocol"))
+                  [(v/instance #+clj clojure.lang.IDeref #+cljs IDeref)
+                   (v/satisfies api/PModelSelect) (v/satisfies api/PModelConvert)]
+                  "must be an instance of IDeref or satisfy the PModelSelect or PModelConvert protocols"))
      :query     {:* (v/map)}
      :bind      (v/optional
                  (v/alts
@@ -780,6 +781,18 @@ then they're merged with the =:values= bindings of the sub-query
 **** Implementations
 
 #+BEGIN_SRC clojure :noweb-ref compiler
+  (defn- maybe-deref
+    [x] (try @x (catch #+clj Exception #+cljs js/Error e x)))
+
+  (defn- unpack-model
+    [model]
+    (let [model (maybe-deref model)]
+      (if (satisfies? api/PModelSelect model)
+        model
+        (if (satisfies? api/PModelConvert model)
+          (api/as-model model)
+          (err/illegal-arg! "Referenced data model doesn't implement PModelSelect")))))
+
   (defmethod compile-query-step :join
     [qfn {:keys [from values where] :as q} _]
     ,#+clj (debug :join where values)
@@ -787,7 +800,7 @@ then they're merged with the =:values= bindings of the sub-query
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from values opts where)
+            (let [b (select-join (unpack-model from) values opts where)
                   res' (if (= ::empty a) b (join a b))]
               res')
             a)))))
@@ -799,7 +812,7 @@ then they're merged with the =:values= bindings of the sub-query
       (fn [res]
         (let [a (qfn res)]
           (if (seq a)
-            (thi.ng.trio.query/minus a (select-join from values opts minus))
+            (thi.ng.trio.query/minus a (select-join (unpack-model from) values opts minus))
             a)))))
 
   (defmethod compile-query-step :optional
@@ -809,7 +822,7 @@ then they're merged with the =:values= bindings of the sub-query
       (fn [res]
         (let [a (qfn res)]
           (if (or (= ::empty a) (seq a))
-            (let [b (select-join from values opts optional)
+            (let [b (select-join (unpack-model from) values opts optional)
                   res' (if (= ::empty a) b (join-optional a b))]
               res')
             a)))))
@@ -820,7 +833,7 @@ then they're merged with the =:values= bindings of the sub-query
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)
-              b (select-join from values opts union)
+              b (select-join (unpack-model from) values opts union)
               res' (if (= ::empty a) b (thi.ng.trio.query/union a b))]
           res'))))
 #+END_SRC
@@ -835,11 +848,10 @@ then they're merged with the =:values= bindings of the sub-query
       (if query
         (let [q (first query)
               from (or (:from q) from)
-              q (cond
-                 (satisfies? api/PModelSelect from)
-                 (assoc q :from from)
-                 (satisfies? api/PModelConvert from)
-                 (assoc q :from (api/as-model from)))
+              from' (maybe-deref from)
+              q (if (or (satisfies? api/PModelSelect from')
+                        (satisfies? api/PModelConvert from'))
+                  (assoc q :from from))
               q (if values
                   (assoc q :values (merge-with (fnil into #{}) values (:values q)))
                   (update-in q [:values] (fnil identity {})))
