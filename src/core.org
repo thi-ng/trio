@@ -970,10 +970,10 @@ avoid major rewrite operations.
 #+END_SRC
 *** Triple graph (experimental, incomplete)
 
-Currently highly inefficient (4-5x slower than =PlainMemoryStore=),
+Currently still inefficient (1.5-2x slower than =PlainMemoryStore=),
 but still thinking this approach of treating triples (incl. with
-wildcards) as graph, might have better milage later when solving query
-joins...
+wildcards) as graph, might have better milage later as part of the
+implementation for an efficient inferencer...
 
 #+BEGIN_SRC clojure :noweb-ref memstore
   (defprotocol PNode
@@ -1003,7 +1003,22 @@ joins...
     Object
     (toString [_] (str (pr-str triple) " " (pr-str children))))
 
-  (declare select-tg*)
+  (defn- index-branch
+    [g id patterns]
+    (loop [^TripleGraph g g, id id, ps patterns]
+      (if ps
+        (let [id' ((.-ids g) (first ps))]
+          (if id'
+            (do
+              (add-child ^TripleNode ((.-nodes g) id') id)
+              g)
+            (recur
+             (add-node g (TripleNode. (triple (first ps)) #{id}) nil)
+             (.-next-id g)
+             (next ps))))
+        g)))
+
+  (def ^:private root [nil nil nil])
 
   (deftype TripleGraph [nodes ids next-id size]
     Object
@@ -1033,19 +1048,31 @@ joins...
 
     PModel
     (subject?
-      [_ x])
+      [_ x] ((subjects _) x))
     (predicate?
-      [_ x])
+      [_ x] ((predicates _) x))
     (object?
-      [_ x])
+      [_ x] ((objects _) x))
     (indexed?
-      [_ x])
+      [_ x] (or (subject? _ x) (predicate? _ x) (object? _ x)))
     (subjects
-      [_])
+      [_] (->> (nodes 0)
+               (get-children)
+               (map #(first (.-triple ^TripleNode (nodes %))))
+               (filter identity)
+               (set)))
     (predicates
-      [_])
+      [_] (->> (nodes 0)
+               (get-children)
+               (map #(nth (.-triple ^TripleNode (nodes %)) 1))
+               (filter identity)
+               (set)))
     (objects
-      [_])
+      [_] (->> (nodes 0)
+               (get-children)
+               (map #(nth (.-triple ^TripleNode (nodes %)) 2))
+               (filter identity)
+               (set)))
     (model-size
       [_] size)
 
@@ -1054,45 +1081,50 @@ joins...
       [_ [s p o :as t]]
       (if-not (ids t)
         (let [id (.-next-id _)
-              ^TripleGraph g (add-node _ (TripleNode. (Triple. s p o nil) nil) nil)
-              index-branch (fn [g patterns]
-                             (loop [^TripleGraph g g, id id, ps patterns]
-                               (if ps
-                                 (let [id' ((.-ids g) (first ps))]
-                                   (if id'
-                                     (do
-                                       (add-child ^TripleNode ((.-nodes g) id') id)
-                                       g)
-                                     (recur
-                                      (add-node g (TripleNode. (triple (first ps)) #{id}) nil)
-                                      (.-next-id g)
-                                      (next ps))))
-                                 g)))]
-          (-> (index-branch g [[s p nil] [s nil nil] [nil nil nil]])
-              (index-branch [[nil p o] [nil p nil]])
-              (index-branch [[s nil o] [nil nil o]])))
+              ^TripleGraph g (add-node _ (TripleNode. (Triple. s p o nil) nil) nil)]
+          (-> (index-branch g id [[s p nil] [s nil nil] root])
+              (index-branch id [[nil p o] [nil p nil] root])
+              (index-branch id [[s nil o] [nil nil o] root])))
         _))
+    (add-triples
+      [_ triples] (reduce add-triple _ triples))
 
     PModelSelect
     (select
       [_] (select _ nil nil nil))
     (select
       [_ s p o]
-      (if-let [id (ids (triple s p o))]
-        (loop [acc (transient [])
-               ids (conj #+clj clojure.lang.PersistentQueue/EMPTY #+cljs cljs.core.PersistentQueue.EMPTY id)]
-          (if (seq ids)
-            (let [^TripleNode n (nodes (peek ids))
-                  c (get-children n)]
-              (if c
-                (recur acc (into (pop ids) c))
-                (recur (conj! acc (.-triple n)) (pop ids))))
-            (persistent! acc))))))
+      (let [ids (if (or s p o)
+                  (if-let [id (ids (triple s p o))] [id])
+                  (->> (nodes 0)
+                       (get-children)
+                       (filter #(first (.-triple ^TripleNode (nodes %))))))]
+        (if (seq ids)
+          (loop [acc (transient [])
+                 ids (into #+clj clojure.lang.PersistentQueue/EMPTY
+                           ,#+cljs cljs.core.PersistentQueue.EMPTY ids)]
+            (if (seq ids)
+              (let [^TripleNode n (nodes (peek ids))
+                    c (get-children n)]
+                (if c
+                  (recur acc (into (pop ids) c))
+                  (recur (conj! acc (.-triple n)) (pop ids))))
+              (persistent! acc)))))))
+
+  (defn graph->dot
+    ([g] (str "digraph g {\n" (graph->dot g 0 "") "}"))
+    ([g id dot]
+       (let [n (get-node-for-id g id)]
+         (reduce
+          (fn [dot id']
+            (graph->dot g id' (str dot (format "\"%d\" -> \"%d\";\n" id id'))))
+          (str dot (format "\"%d\"[label=\"(%d) %s\"];\n" id id (pr-str (.-triple ^TripleNode n))))
+          (get-children n)))))
 
   (defn triple-graph
     []
-    (let [root (TripleNode. [nil nil nil] nil)]
-      (add-node (TripleGraph. {} {} 0 0) root)))
+    (let [root' (TripleNode. root nil)]
+      (add-node (TripleGraph. {} {} 0 0) root')))
 #+END_SRC
 
 **** Old add-triple (ignore)
