@@ -1020,6 +1020,13 @@ implementation for an efficient inferencer...
 
   (def ^:private root [nil nil nil])
 
+  (defn tg-select-with-alts
+    [_ s p o]
+    (if (and (seq s) (seq p) (seq o))
+      (mapcat
+       (fn [[s p o]] (select _ s p o))
+       (d/cartesian-product s p o))))
+
   (deftype TripleGraph [nodes ids next-id size]
     Object
     (toString
@@ -1109,41 +1116,56 @@ implementation for an efficient inferencer...
                 (if c
                   (recur acc (into (pop ids) c))
                   (recur (conj! acc (.-triple n)) (pop ids))))
-              (persistent! acc)))))))
+              (persistent! acc))))))
+    (select-with-alts
+      [_ s p o]
+      (let [s (if (set? s) (if-not (empty? s) s) (if s #{s}))
+            p (if (set? p) (if-not (empty? p) p) (if p #{p}))
+            o (if (set? o) (if-not (empty? o) o) (if o #{o}))]
+        (if s
+          (if p
+            (if o
+              (tg-select-with-alts
+               _
+               (set/intersection s (subjects _))
+               (set/intersection p (predicates _))
+               (set/intersection o (objects _)))
+              (tg-select-with-alts
+               _ (set/intersection s (subjects _)) (set/intersection p (predicates _)) #{nil}))
+            (if o
+              (tg-select-with-alts
+               _ (set/intersection s (subjects _)) #{nil} (set/intersection o (objects _)))
+              (tg-select-with-alts
+               _ (set/intersection s (subjects _)) #{nil} #{nil})))
+          (if p
+            (if o
+              (tg-select-with-alts
+               _ #{nil} (set/intersection p (predicates _)) (set/intersection o (objects _)))
+              (tg-select-with-alts
+               _ #{nil} (set/intersection p (predicates _)) #{nil}))
+            (if o
+              (tg-select-with-alts
+               _ #{nil} #{nil} (set/intersection o (objects _)))
+              (select _ nil nil nil)))))))
 
   (defn graph->dot
-    ([g] (str "digraph g {\n" (graph->dot g 0 "") "}"))
+    ([g]
+       (str "digraph g {\n"
+            "node[color=\"black\",style=\"filled\",fontname=\"Inconsolata\",fontcolor=\"white\",fontsize=\"9\"];\n"
+            "edge[fontname=\"Inconsolata\",fontsize=\"9\"];\n"
+            (graph->dot g 0 "")
+            "}"))
     ([g id dot]
-       (let [n (get-node-for-id g id)]
+       (let [n (get-node-for-id g id)
+             t (.-triple ^TripleNode n)
+             d (format
+                "%d[label=\"%d: %s\",color=%s];\n"
+                id id (pr-str t)
+                (if (every? identity t) "red" "grey"))]
          (reduce
-          (fn [dot id']
-            (graph->dot g id' (str dot (format "\"%d\" -> \"%d\";\n" id id'))))
-          (str dot (format "\"%d\"[label=\"(%d) %s\"];\n" id id (pr-str (.-triple ^TripleNode n))))
+          (fn [dot id'] (graph->dot g id' (str dot (format "%d -> %d;\n" id id'))))
+          (str dot d)
           (get-children n)))))
-
-  (defn triple-graph
-    []
-    (let [root' (TripleNode. root nil)]
-      (add-node (TripleGraph. {} {} 0 0) root')))
-#+END_SRC
-
-**** Old add-triple (ignore)
-#+BEGIN_SRC clojure
-  (add-triple
-   [_ [s p o :as t]]
-   (let [[_ t1s] (if-let [n (nodes (ids [s nil nil]))]
-                   [_ n] (let [n (index-node [s nil nil])] [(add-node _ n [(nodes 0)]) n]))
-         [_ t1p] (if-let [n (nodes (ids [nil p nil]))]
-                   [_ n] (let [n (index-node [nil p nil])] [(add-node _ n) n]))
-         [_ t1o] (if-let [n (nodes (ids [nil nil o]))]
-                   [_ n] (let [n (index-node [nil nil o])] [(add-node _ n) n]))
-         [_ t2sp] (if-let [n (nodes (ids [s p nil]))]
-                    [_ n] (let [n (index-node [s p nil])] [(add-node _ n [t1s]) n]))
-         [_ t2po] (if-let [n (nodes (ids [nil p o]))]
-                    [_ n] (let [n (index-node [nil p o])] [(add-node _ n [t1p]) n]))
-         [_ t2so] (if-let [n (nodes (ids [s nil o]))]
-                    [_ n] (let [n (index-node [s nil o])] [(add-node _ n [t1o]) n]))]
-     (add-node _ (index-node t) [t2sp t2so t2po])))
 #+END_SRC
 
 *** Constructors
@@ -1155,6 +1177,11 @@ implementation for an efficient inferencer...
   (defn alias-store
     [store aliases & triples]
     (add-triples (reduce (partial apply u/union) (AliasMemoryStore. store (u/disjoint-set)) aliases) triples))
+
+  (defn triple-graph
+    []
+    (let [root' (TripleNode. root nil)]
+      (add-node (TripleGraph. {} {} 0 0) root')))
 #+END_SRC
 
 ** Multi-store dataset
