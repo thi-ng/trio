@@ -1003,21 +1003,6 @@ implementation for an efficient inferencer...
     Object
     (toString [_] (str (pr-str triple) " " (pr-str children))))
 
-  (defn- index-branch
-    [g id patterns]
-    (loop [^TripleGraph g g, id id, ps patterns]
-      (if ps
-        (let [id' ((.-ids g) (first ps))]
-          (if id'
-            (do
-              (add-child ^TripleNode ((.-nodes g) id') id)
-              g)
-            (recur
-             (add-node g (TripleNode. (triple (first ps)) #{id}) nil)
-             (.-next-id g)
-             (next ps))))
-        g)))
-
   (def ^:private root [nil nil nil])
 
   (defn tg-select-with-alts
@@ -1026,6 +1011,8 @@ implementation for an efficient inferencer...
       (mapcat
        (fn [[s p o]] (select _ s p o))
        (d/cartesian-product s p o))))
+
+  (declare index-branch)
 
   (deftype TripleGraph [nodes ids next-id size]
     Object
@@ -1147,6 +1134,21 @@ implementation for an efficient inferencer...
               (tg-select-with-alts
                _ #{nil} #{nil} (set/intersection o (objects _)))
               (select _ nil nil nil)))))))
+
+  (defn- index-branch
+    [g id patterns]
+    (loop [^TripleGraph g g, id id, ps patterns]
+      (if ps
+        (let [id' ((.-ids g) (first ps))]
+          (if id'
+            (do
+              (add-child ^TripleNode ((.-nodes g) id') id)
+              g)
+            (recur
+             (add-node g (TripleNode. (triple (first ps)) #{id}) nil)
+             (.-next-id g)
+             (next ps))))
+        g)))
 
   (defn graph->dot
     ([g]
