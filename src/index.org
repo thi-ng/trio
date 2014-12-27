@@ -87,7 +87,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-2322"]
+[org.clojure/clojurescript "0.0-2411"]
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
@@ -120,11 +120,11 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/cemerick/clojurescript.test][clojurescript.test]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs-test
-[com.cemerick/clojurescript.test "0.3.1"]
+[com.cemerick/clojurescript.test "0.3.3"]
 #+END_SRC
 **** [[https://github.com/emezeske/lein-cljsbuild][Cljsbuild]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljsbuild
-[lein-cljsbuild "1.0.3"]
+[lein-cljsbuild "1.0.4-SNAPSHOT"]
 #+END_SRC
 
 ** Contributors

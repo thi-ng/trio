@@ -127,7 +127,7 @@ The above call to =defentity= will result in the following:
          ;;(prn :inits inits#)
          ;;(prn :defaults defaults#)
 
-         (defn ~wrap-props [] (prn :eek) props#)
+         (defn ~wrap-props [] props#)
 
          (defrecord ~name [~@fields]
            api/PTripleSeq
