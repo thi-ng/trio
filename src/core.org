@@ -1150,12 +1150,13 @@ implementation for an efficient inferencer...
              (next ps))))
         g)))
 
-  (defn graph->dot
+  ,#+clj
+  (defn triple-graph->dot
     ([g]
        (str "digraph g {\n"
-            "node[color=\"black\",style=\"filled\",fontname=\"Inconsolata\",fontcolor=\"white\",fontsize=\"9\"];\n"
-            "edge[fontname=\"Inconsolata\",fontsize=\"9\"];\n"
-            (graph->dot g 0 "")
+            "node[color=black,style=filled,fontname=Inconsolata,fontcolor=white,fontsize=9];\n"
+            "edge[fontname=Inconsolata,fontsize=9];\n"
+            (triple-graph->dot g 0 "")
             "}"))
     ([g id dot]
        (let [n (get-node-for-id g id)
@@ -1163,9 +1164,9 @@ implementation for an efficient inferencer...
              d (format
                 "%d[label=\"%d: %s\",color=%s];\n"
                 id id (pr-str t)
-                (if (every? identity t) "red" "grey"))]
+                (if (is-leaf? n) "red" "grey"))]
          (reduce
-          (fn [dot id'] (graph->dot g id' (str dot (format "%d -> %d;\n" id id'))))
+          (fn [dot id'] (triple-graph->dot g id' (str dot (format "%d -> %d;\n" id id'))))
           (str dot d)
           (get-children n)))))
 #+END_SRC
