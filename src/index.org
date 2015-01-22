@@ -61,9 +61,9 @@ look!
 
 This project is open source and licensed under the [[http://www.apache.org/licenses/LICENSE-2.0][Apache Software License 2.0]].
 
-** Injected properties                                             :noexport:
+** Injected properties
 
-#+BEGIN_SRC clojure :exports none :noweb-ref version
+#+BEGIN_SRC clojure :noweb-ref version
 0.1.0-SNAPSHOT
 #+END_SRC
 #+BEGIN_SRC clojure :exports none :noweb-ref project-url
@@ -87,7 +87,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-2411"]
+[org.clojure/clojurescript "0.0-2657"]
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
@@ -106,10 +106,6 @@ target/trio-<<version>>.js
 [com.taoensso/timbre "3.3.1"]
 #+END_SRC
 *** Development
-**** [[https://github.com/cemerick/austin][Austin]]
-#+BEGIN_SRC clojure :noweb-ref dep-austin
-[com.cemerick/austin "0.1.4"]
-#+END_SRC
 **** [[https://github.com/lynaghk/cljx][Cljx]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljx
 [com.keminglabs/cljx "0.5.0"]
@@ -124,7 +120,7 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/emezeske/lein-cljsbuild][Cljsbuild]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljsbuild
-[lein-cljsbuild "1.0.4-SNAPSHOT"]
+[lein-cljsbuild "1.0.4"]
 #+END_SRC
 
 ** Contributors

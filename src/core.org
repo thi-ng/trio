@@ -377,7 +377,7 @@ of the code.
 #+END_SRC
 **** rseq
 #+BEGIN_SRC clojure :noweb-ref tpl-rseq
-  (Triple. o p s nil)
+  
 #+END_SRC
 **** reduce
 #+BEGIN_SRC clojure :noweb-ref tpl-reduce
@@ -460,14 +460,8 @@ of the code.
          [_] 3)
 
   ,#+clj clojure.lang.Sequential
-  ,#+clj clojure.lang.ISeq
   ,#+clj clojure.lang.Seqable
-  ,#+clj (first
-         [_] s)
-  ,#+clj (next
-         [_] <<tpl-rest>>)
-  ,#+clj (more
-         [_] <<tpl-rest>>)
+  ,#+clj (seq [_] (seq [s p o]))
   ,#+clj (cons
          [_ x] [s p o x])
   ,#+clj (peek
@@ -475,9 +469,7 @@ of the code.
   ,#+clj (pop
          [_] [s p])
   ,#+clj (rseq
-         [_] <<tpl-rseq>>)
-  ,#+clj (seq
-         [_] _)
+         [_] (seq [o p s]))
   ,#+clj (nth
          [_ k] <<tpl-nth-err>>)
   ,#+clj (nth
@@ -580,7 +572,7 @@ of the code.
 
   ,#+cljs IReversible
   ,#+cljs (-rseq
-          [_] <<tpl-rseq>>)
+          [_] (Triple. o p s nil))
 
   ,#+cljs IIndexed
   ,#+cljs (-nth
@@ -635,7 +627,7 @@ of the code.
 
   ,#+cljs Object
   ,#+cljs (toString
-          [_] (str "[" s " " p " " o "]"))
+          [_] (str "[" (pr-str s) " " (pr-str p) " " (pr-str o) "]"))
 #+END_SRC
 
 **** End of triple type
