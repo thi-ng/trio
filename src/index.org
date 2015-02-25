@@ -6,13 +6,13 @@
      - [[#overview][Overview]]
      - [[#status][Status]]
      - [[#example-usage][Example usage]]
-     - [[#license][License]]
+ - [[#namespaces][Namespaces]]
+ - [[#tests][Tests]]
+ - [[#project-definition][Project definition]]
      - [[#injected-properties][Injected properties]]
      - [[#dependencies][Dependencies]]
          - [[#runtime][Runtime]]
          - [[#development][Development]]
-     - [[#contributors][Contributors]]
-     - [[#release-history][Release history]]
      - [[#leiningen-coordinates][Leiningen coordinates]]
      - [[#building-this-project][Building this project]]
          - [[#testing][Testing]]
@@ -21,8 +21,9 @@
      - [[#clojurescript-html-harness][ClojureScript HTML harness]]
      - [[#accessing-library-version-during-runtime][Accessing library version during runtime]]
          - [[#version-namespace][Version namespace]]
- - [[#namespaces][Namespaces]]
- - [[#tests][Tests]]
+     - [[#release-history][Release history]]
+     - [[#contributors][Contributors]]
+     - [[#license][License]]
 
 * About the project
 
@@ -57,14 +58,29 @@ The [[query.org][query engine namespace]] and growing [[../test/][test suite]] i
 best source of information and concrete usage examples. Please take a
 look!
 
-** License
+* Namespaces
 
-This project is open source and licensed under the [[http://www.apache.org/licenses/LICENSE-2.0][Apache Software License 2.0]].
+- [[core.org][thi.ng.trio.core]]
+- [[query.org][thi.ng.trio.query]]
 
-** Injected properties
+**** Non-complete / in development
+
+- [[./entities.org][thi.ng.trio.entities]] (schema based entities w/ triple serialization)
+- [[./vocabs.org][thi.ng.trio.vocabs]] (optional RDF related vocab stubs)
+- [[csv.org][thi.ng.trio.csv]] (CSV -> triple/graph mapping)
+- [[./inference.org][thi.ng.trio.inference]] (rule based inferencing)
+
+* Tests
+
+- [[../test/core.org][thi.ng.trio.test.core]]
+- [[../test/query.org][thi.ng.trio.test.query]]
+
+* Project definition
+
+** Injected properties                                             :noexport:
 
 #+BEGIN_SRC clojure :noweb-ref version
-0.1.0-SNAPSHOT
+0.1.0
 #+END_SRC
 #+BEGIN_SRC clojure :exports none :noweb-ref project-url
 http://thi.ng/trio
@@ -87,15 +103,15 @@ target/trio-<<version>>.js
 #+END_SRC
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-2657"]
+[org.clojure/clojurescript "0.0-2913"]
 #+END_SRC
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
-[thi.ng/common "0.3.0-SNAPSHOT"]
+[thi.ng/common "0.3.0"]
 #+END_SRC
 **** [[https://github.com/thi-ng/validate/][thi.ng/validate]]
 #+BEGIN_SRC clojure :noweb-ref dep-validate
-[thi.ng/validate "0.1.0-SNAPSHOT"]
+[thi.ng/validate "0.1.0"]
 #+END_SRC
 **** [[https://github.com/clojure/data.csv][data.csv]]
 #+BEGIN_SRC clojure :noweb-ref dep-csv
@@ -108,7 +124,7 @@ target/trio-<<version>>.js
 *** Development
 **** [[https://github.com/lynaghk/cljx][Cljx]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljx
-[com.keminglabs/cljx "0.5.0"]
+[com.keminglabs/cljx "0.6.0"]
 #+END_SRC
 **** [[https://github.com/hugoduncan/criterium][Criterium]]
 #+BEGIN_SRC clojure :noweb-ref dep-criterium
@@ -123,27 +139,10 @@ target/trio-<<version>>.js
 [lein-cljsbuild "1.0.4"]
 #+END_SRC
 
-** Contributors
-
-| *Name*          | *Role*                          | *Website*                  |
-|-----------------+---------------------------------+----------------------------|
-| [[k@thi.ng][Karsten Schmidt]] | initiator & principal developer | http://postspectacular.com |
-
-I've got a fairly detailed roadmap and task list to implement over the
-coming months, but am always happy to receive feedback & suggestions
-and have issues filed. Once the core engine is more refined I'll be
-gladly welcoming other contributions. Thanks for understanding!
-
-** Release history
-
-| *Version* | *Released* | *Description*      | *Lein coordinates*      | *Tagged Github URL* |
-|-----------+------------+--------------------+-------------------------+---------------------|
-|     0.1.0 | pending    | 1st public release | =[thi.ng/trio "0.1.0"]= |                     |
-
 ** Leiningen coordinates
 
 #+BEGIN_SRC clojure :noweb yes :noweb-ref lein-coords
-  [thi.ng/trio <<version>>]
+  [thi.ng/trio "0.1.0"]
 #+END_SRC
 
 ** Building this project
@@ -282,13 +281,23 @@ symbol =version= holding the version string defined above:
   (def version "<<version>>")
 #+END_SRC
 
-* Namespaces
+** Release history
 
-- [[core.org][thi.ng.trio.core]]
-- [[query.org][thi.ng.trio.query]]
-- [[csv.org][thi.ng.trio.csv]]
+| *Version* | *Released* | *Description*      | *Lein coordinates*      | *Tagged Github URL* |
+|-----------+------------+--------------------+-------------------------+---------------------|
+|     0.1.0 | 2015-02-25 | 1st public release | =[thi.ng/trio "0.1.0"]= | [[https://github.com/thi-ng/trio/tree/0.1.0][0.1.0]]               |
 
-* Tests
+** Contributors
 
-- [[../test/core.org][thi.ng.trio.test.core]]
-- [[../test/query.org][thi.ng.trio.test.query]]
+| *Name*          | *Role*                          | *Website*                  |
+|-----------------+---------------------------------+----------------------------|
+| [[k@thi.ng][Karsten Schmidt]] | initiator & principal developer | http://postspectacular.com |
+
+I've got a fairly detailed roadmap and task list to implement over the
+coming months, but am always happy to receive feedback & suggestions
+and have issues filed. Once the core engine is more refined I'll be
+gladly welcoming other contributions. Thanks for understanding!
+
+** License
+
+This project is open source and licensed under the [[http://www.apache.org/licenses/LICENSE-2.0][Apache Software License 2.0]].
