@@ -14,8 +14,14 @@ flexibility).
 - [Query engine & examples](src/query.org)
 - [Triplestore API & implementations](src/core.org)
 
+## Leiningen coordinates
+
+```clj
+[thi.ng/trio "0.1.0"]
+```
+
 ## License
 
-Copyright © 2014 Karsten Schmidt
+Copyright © 2012 - 2015 Karsten Schmidt
 
 Distributed under the [Apache Software License 2.0](http://www.apache.org/licenses/LICENSE-2.0).
