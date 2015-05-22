@@ -276,7 +276,7 @@ The above call to =defentity= will result in the following:
 
 ** Complete namespace definitions
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/entities.clj :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/entities.clj :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.entities
     (:require
      [thi.ng.trio.core :as api]
@@ -290,7 +290,7 @@ The above call to =defentity= will result in the following:
   <<macros>>
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/entities/utils.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/entities/utils.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.entities.utils
     (:require
      [thi.ng.trio.core :as api]

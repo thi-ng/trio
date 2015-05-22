@@ -28,7 +28,7 @@
 
 #+BEGIN_SRC clojure :noweb-ref tests
   (deftest test-entity
-    (is (thrown? #+clj IllegalArgumentException #+cljs js/Error (make-test-entity {})))
+    (is (thrown? #?(:clj IllegalArgumentException :cljs js/Error) (make-test-entity {})))
     (let [cid (utils/new-uuid)
           e  (make-test-entity {:creator cid})]
       (is (= {:creator cid :title "Untitled" :type "trio:TestEntity"
@@ -44,12 +44,12 @@
 
 ** Namespace declaration
 
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/entities.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/test/thi/ng/trio/test/entities.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.test.entities
-    ,#+cljs
-    (:require-macros
-     [cemerick.cljs.test :refer [is deftest with-test testing]]
-     [thi.ng.trio.entities :as e :refer [defentity]])
+    #?(:cljs
+       (:require-macros
+        [cemerick.cljs.test :refer [is deftest with-test testing]]
+        [thi.ng.trio.entities :as e :refer [defentity]]))
     (:require
      [thi.ng.validate.core :as v]
      [thi.ng.trio.core :as api]
@@ -57,9 +57,9 @@
      [thi.ng.trio.utils :as utils]
      [thi.ng.trio.vocabs.dcterms :refer [dcterms]]
      [thi.ng.trio.entities.utils :as eu]
-     ,#+clj  [thi.ng.trio.entities :refer [defentity]]
-     ,#+clj  [clojure.test :refer :all]
-     ,#+cljs [cemerick.cljs.test :as t]))
+     #?@(:clj  [[thi.ng.trio.entities :refer [defentity]]
+                [clojure.test :refer :all]]
+         :cljs [[cemerick.cljs.test :as t]])))
 
   <<tests>>
 #+END_SRC

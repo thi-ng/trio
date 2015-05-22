@@ -43,13 +43,13 @@
           t2 '{s1 {p1 o1 p2 o2}           ;; 2
                s2 {p1 [o1 o1 o2] p3 o3}}] ;; 4
       (is (satisfies? api/PTripleSeq []))
-      ,#+clj (is (satisfies? api/PTripleSeq (list)))
-      ,#+clj (is (satisfies? api/PTripleSeq (cons '[s p o] nil)))
+      #?(:clj (is (satisfies? api/PTripleSeq (list))))
+      #?(:clj (is (satisfies? api/PTripleSeq (cons '[s p o] nil))))
       (is (satisfies? api/PTripleSeq (lazy-seq [])))
       (is (satisfies? api/PTripleSeq {}))
       (is (satisfies? api/PModelConvert []))
-      ,#+clj (is (satisfies? api/PModelConvert (list)))
-      ,#+clj (is (satisfies? api/PModelConvert (cons '[s p o] nil)))
+      #?(:clj (is (satisfies? api/PModelConvert (list))))
+      #?(:clj (is (satisfies? api/PModelConvert (cons '[s p o] nil))))
       (is (satisfies? api/PModelConvert (lazy-seq [])))
       (is (satisfies? api/PModelConvert {}))
       (is (== 27 (count (api/triple-seq t1))))
@@ -156,17 +156,19 @@
 
 ** Namespace declaration
 
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/core.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/test/thi/ng/trio/test/core.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.test.core
-    ,#+cljs
-    (:require-macros
-     [cemerick.cljs.test :refer [is deftest with-test testing]])
+    #?(:cljs
+       (:require-macros
+        [cemerick.cljs.test :refer [is deftest with-test testing]]))
     (:require
      [thi.ng.trio.core :as api]
      [thi.ng.trio.query :as q]
      [thi.ng.common.data.unionfind :as u]
-     ,#+clj  [clojure.test :refer :all]
-     ,#+cljs [cemerick.cljs.test :as t]))
+     #?(:clj
+        [clojure.test :refer :all]
+        :cljs
+        [cemerick.cljs.test :as t])))
 
   <<tests>>
 #+END_SRC

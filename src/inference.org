@@ -381,7 +381,7 @@
         (let [inf' (->> inf
                         (set/difference (q/query (assoc rule :from ds)))
                         (filter #(nil? (seq (apply api/select ds %)))))]
-          ,#+clj (debug :inf inf')
+          (debug :inf inf')
           (if (seq inf')
             (recur
              (if id
@@ -407,13 +407,13 @@
            (butlast state)
            (let [state (reduce
                         (fn [[ds inf :as state] [id rule]]
-                          ,#+clj (debug :rule id)
+                          (debug :rule id)
                           (let [[ds inf'] (infer-rule ds g rule #{})]
                             (if (seq inf')
                               [ds (assoc inf id (into (or (inf id) #{}) inf')) true]
                               state)))
                         (assoc state 2 false) rules)]
-             ,#+clj (debug :pass i :state (peek state))
+             (debug :pass i :state (peek state))
              (if (peek state)
                (recur state (inc i))
                (butlast state)))))))
@@ -427,8 +427,11 @@
 
 ** Complete namespace definition
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/inference.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/inference.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.inference
+    #?(:cljs
+       (:require-macros
+        [cljs-log.core :refer [debug info warn severe]]))
     (:require
      [thi.ng.trio.core :as api]
      [thi.ng.trio.query :as q]
@@ -436,7 +439,7 @@
      [thi.ng.trio.vocabs.rdfs :refer [rdfs]]
      [thi.ng.trio.vocabs.owl :refer [owl]]
      [clojure.set :as set]
-     ,#+clj [taoensso.timbre :refer [debug info warn error]]))
+     #?(:clj [taoensso.timbre :refer [debug info warn error]])))
 
   <<rules>>
 

@@ -18,31 +18,35 @@
 ** UUID generation
 
 #+BEGIN_SRC clojure :noweb-ref uuid
-  ,#+clj
-  (defn new-uuid [] (str (java.util.UUID/randomUUID)))
+  (def ^:private format-16bit-hex (f/pad-left 4 "0"))
 
-  ,#+cljs
-  (defn- rand-bits [pow]
-    (rand-int (bit-shift-left 1 pow)))
+  (defn rand-bits
+    [bits] (int (* (rand) (bit-shift-left 1 bits))))
 
-  ,#+cljs
+  (defn rand-bits-hex
+    [bits] ((f/pad-left (Math/ceil (/ bits 4)) "0") (.toString (rand-bits bits) 16)))
+
+  (defn rand-16bits-hex
+    [] (format-16bit-hex (.toString (rand-int 0x10000) 16)))
+
   (defn new-uuid
     []
-    (str
-     (-> (js/Date.) (.getTime) (/ 1000) (Math/round) (.toString 16))
-     "-" (-> (rand-bits 16) (.toString 16))
-     "-" (-> (rand-bits 16) (bit-and 0x0fff) (bit-or 0x4000) (.toString 16))
-     "-" (-> (rand-bits 16) (bit-and 0x3fff) (bit-or 0x8000) (.toString 16))
-     "-" (-> (rand-bits 16) (.toString 16))
-     (-> (rand-bits 16) (.toString 16))
-     (-> (rand-bits 16) (.toString 16))))
+    #?(:clj
+       (str (java.util.UUID/randomUUID))
+       :cljs (str
+              (rand-16bits-hex) (rand-16bits-hex)
+              "-" (rand-16bits-hex)
+              "-" (-> (rand-bits 16) (bit-and 0x0fff) (bit-or 0x4000) (.toString 16) (format-16bit-hex))
+              "-" (-> (rand-bits 16) (bit-and 0x3fff) (bit-or 0x8000) (.toString 16) (format-16bit-hex))
+              "-" (rand-16bits-hex) (rand-16bits-hex) (rand-16bits-hex))))
 #+END_SRC
 
 ** Complete namespace definition
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/utils.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/utils.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.utils
     (:require
+     [thi.ng.common.stringformat :as f]
      [clojure.string :as str]))
 
   <<case-convert>>

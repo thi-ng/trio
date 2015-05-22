@@ -213,31 +213,30 @@
          (api/triple-seq)
          (mapv #(expand-pnames-in-triple prefixes %))))
 
-  ,#+clj
-  (defn load-vocab-triples
-    [src]
-    (let [{:keys [prefixes triples]}
-          (->> src
-               (io/input-stream)
-               (slurp)
-               (edn/read-string))]
-      {:prefixes prefixes
-       :triples (triple-seq-with-prefixes prefixes triples)}))
-
-  ,#+clj
-  (defn load-vocabs-as-model
-    [src]
-    (let [{:keys [prefixes triples]} (load-vocab-triples src)]
-      (vocabs-from-model prefixes (api/as-model triples))))
-
   (defn make-vocab
     [uri xs]
     (->> xs (map (fn [x] [x (str uri (name x))])) (into {})))
+
+  #?@(:clj
+       [(defn load-vocab-triples
+          [src]
+          (let [{:keys [prefixes triples]}
+                (->> src
+                     (io/input-stream)
+                     (slurp)
+                     (edn/read-string))]
+            {:prefixes prefixes
+             :triples (triple-seq-with-prefixes prefixes triples)}))
+
+        (defn load-vocabs-as-model
+          [src]
+          (let [{:keys [prefixes triples]} (load-vocab-triples src)]
+            (vocabs-from-model prefixes (api/as-model triples))))])
 #+END_SRC
 
 ** Complete namespace definitions
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs.clj :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs.clj :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs
     (:require
      [thi.ng.trio.vocabs.utils :as vu]))
@@ -248,44 +247,44 @@
       `(def ~id ~voc)))
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/utils.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs/utils.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.utils
     (:require
      [thi.ng.trio.core :as api]
-     ,#+clj [clojure.java.io :as io]
-     ,#+clj [clojure.edn :as edn]
-     [clojure.string :as str]))
+     [clojure.string :as str]
+     #?@(:clj [[clojure.java.io :as io]
+                [clojure.edn :as edn]])))
 
   <<helpers>>
 #+END_SRC
 
 #+BEGIN_SRC clojure :noweb-ref incl-macros
-  ,#+cljs (:require-macros [thi.ng.trio.vocabs :refer [defvocab]])
-  ,#+clj  (:require [thi.ng.trio.vocabs :refer [defvocab]])
+  #?(:cljs (:require-macros [thi.ng.trio.vocabs :refer [defvocab]])
+     :clj  (:require [thi.ng.trio.vocabs :refer [defvocab]]))
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/rdf.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs/rdf.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.rdf
     <<incl-macros>>)
 
   <<rdf>>
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/rdfs.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs/rdfs.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.rdfs
     <<incl-macros>>)
 
   <<rdfs>>
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/dcterms.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs/dcterms.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.dcterms
     <<incl-macros>>)
 
   <<dcterms>>
 #+END_SRC
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/vocabs/owl.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/vocabs/owl.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.vocabs.owl
     <<incl-macros>>)
 

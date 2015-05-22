@@ -386,12 +386,12 @@ sub-query dispatch, see below).
     {:select    (v/alts
                  [(v/symbol) (v/keyword) (v/sequential)]
                  "must be a qvar, keyword or seq")
-     ,#+clj
-     :from      #+clj (v/optional
-                 (v/alts
-                  [(v/instance #+clj clojure.lang.IDeref #+cljs IDeref)
-                   (v/satisfies api/PModelSelect) (v/satisfies api/PModelConvert)]
-                  "must be an instance of IDeref or satisfy the PModelSelect or PModelConvert protocols"))
+     #?@(:clj
+          [:from (v/optional
+                  (v/alts
+                   [(v/instance clojure.lang.IDeref)
+                    (v/satisfies api/PModelSelect) (v/satisfies api/PModelConvert)]
+                   "must be an instance of IDeref or satisfy the PModelSelect or PModelConvert protocols"))])
      :query     {:* (v/map)}
      :bind      (v/optional
                  (v/alts
@@ -413,7 +413,7 @@ sub-query dispatch, see below).
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :select
     [qfn {:keys [select bind order-asc order-desc distinct] :as q} _]
-    ,#+clj (debug :select select)
+    (debug :select select)
     (validate q validator-select)
     (validate {:from (collect-source-graphs q)} {:from (v/required)})
     (cond->
@@ -785,7 +785,7 @@ then they're merged with the =:values= bindings of the sub-query
 
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defn- maybe-deref
-    [x] (try @x (catch #+clj Exception #+cljs js/Error e x)))
+    [x] (try @x (catch #?(:clj Exception :cljs js/Error) e x)))
 
   (defn- unpack-model
     [model]
@@ -798,7 +798,7 @@ then they're merged with the =:values= bindings of the sub-query
 
   (defmethod compile-query-step :join
     [qfn {:keys [from values where] :as q} _]
-    ,#+clj (debug :join where values)
+    (debug :join where values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
@@ -810,7 +810,7 @@ then they're merged with the =:values= bindings of the sub-query
 
   (defmethod compile-query-step :minus
     [qfn {:keys [from values minus] :as q} _]
-    ,#+clj (debug :minus minus values)
+    (debug :minus minus values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
@@ -820,7 +820,7 @@ then they're merged with the =:values= bindings of the sub-query
 
   (defmethod compile-query-step :optional
     [qfn {:keys [from values optional] :as q} _]
-    ,#+clj (debug :join-opt optional values)
+    (debug :join-opt optional values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)]
@@ -832,7 +832,7 @@ then they're merged with the =:values= bindings of the sub-query
 
   (defmethod compile-query-step :union
     [qfn {:keys [from values union] :as q} _]
-    ,#+clj (debug :union union values)
+    (debug :union union values)
     (let [opts (query-opts q)]
       (fn [res]
         (let [a (qfn res)
@@ -846,7 +846,7 @@ then they're merged with the =:values= bindings of the sub-query
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :query-dispatch
     [qfn {:keys [from values query]} _]
-    ,#+clj (debug :query-dispatch query)
+    (debug :query-dispatch query)
     (loop [qfn qfn, query query, first? true]
       (if query
         (let [q (first query)
@@ -874,18 +874,18 @@ then they're merged with the =:values= bindings of the sub-query
 #+BEGIN_SRC clojure :noweb-ref compiler
   (defmethod compile-query-step :bind
     [qfn bind _]
-    ,#+clj (debug :bindings bind)
+    (debug :bindings bind)
     (let [bind (compile-bind-fn bind)]
       (fn [res] (map bind (qfn res)))))
 
   (defmethod compile-query-step :order-asc
     [qfn order _]
-    ,#+clj (debug :order-asc order)
+    (debug :order-asc order)
     (fn [res] (order-asc order (qfn res))))
 
   (defmethod compile-query-step :order-desc
     [qfn order _]
-    ,#+clj (debug :order-desc order)
+    (debug :order-desc order)
     (fn [res] (order-desc order (qfn res))))
 
   (defmethod compile-query-step :distinct-bindings
@@ -1039,7 +1039,7 @@ calculate their retail price incl. taxes:
 
   (defmethod compile-query-step :project-vars
     [qfn {:keys [select group aggregate filter] :as q} _]
-    ,#+clj (debug :project-vars select)
+    (debug :project-vars select)
     (let [select     (if (sequential? select) select [select])
           svars      (selected-var-keys select)
           catch-all? (svars :*)
@@ -1193,25 +1193,25 @@ projection, both for grouped & ungrouped results.
 
   (defmethod compile-query-step :project-vars-aggregates
     [qfn [avars svars filter] _]
-    ,#+clj (debug :aggregates-only avars filter)
+    (debug :aggregates-only avars filter)
     (let [project-fn (project-aggregates-only avars svars filter)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-mixed
     [qfn [avars svars all? flt] _]
-    ,#+clj (debug :mixed-aggregates avars svars all? flt)
+    (debug :mixed-aggregates avars svars all? flt)
     (let [project-fn (project-aggregates-mixed avars svars all? flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-simple
     [qfn [vars flt] _]
-    ,#+clj (debug :simple-aggregates vars flt)
+    (debug :simple-aggregates vars flt)
     (let [project-fn (project-aggregates-simple vars flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
   (defmethod compile-query-step :project-vars-all
     [qfn flt _]
-    ,#+clj (debug :all-aggregates flt)
+    (debug :all-aggregates flt)
     (let [project-fn (project-aggregates-all flt)]
       (fn [res] (->> (qfn res) (project-fn)))))
 
@@ -1226,31 +1226,31 @@ projection, both for grouped & ungrouped results.
 
   (defmethod compile-query-step :group-aggregates-only
     [qfn [avars svars filter] _]
-    ,#+clj (debug :aggregates-only avars filter)
+    (debug :aggregates-only avars filter)
     (let [project-fn (project-aggregates-only avars svars filter)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-mixed
     [qfn [avars svars all? flt] _]
-    ,#+clj (debug :mixed-aggregates avars svars all? flt)
+    (debug :mixed-aggregates avars svars all? flt)
     (let [project-fn (project-aggregates-mixed avars svars all? flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-simple
     [qfn [vars flt] _]
-    ,#+clj (debug :simple-aggregates vars flt)
+    (debug :simple-aggregates vars flt)
     (let [project-fn (project-aggregates-simple vars flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :group-aggregates-all
     [qfn flt _]
-    ,#+clj (debug :all-aggregates flt)
+    (debug :all-aggregates flt)
     (let [project-fn (project-aggregates-all flt)]
       (fn [res] (->> (qfn res) (project-groups-with project-fn)))))
 
   (defmethod compile-query-step :project-groups
     [qfn [group aggregate svars filter agg-only? catch-all?] _]
-    ,#+clj (debug :project-groups group aggregate)
+    (debug :project-groups group aggregate)
     (let [group (compile-group-fn group)
           qfn   (fn [res] (group-by group (qfn res)))]
       (if (seq aggregate)
@@ -1285,8 +1285,8 @@ stringified map of explanations/reasons for each failed key.
         (if-not err
           ret
           (err/throw! (str "Error compiling query: " err))))
-      (catch #+clj Exception #+cljs js/Error e
-        (err/throw! #+clj (.getMessage e) #+cljs e))))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (err/throw! #?(:clj (.getMessage e) :cljs e)))))
 #+END_SRC
 
 **** Validation helpers
@@ -1588,7 +1588,7 @@ constrained, initial result set.
 
   (defn union
     [a b]
-    ,#+clj (debug :union-ab a b)
+    (debug :union-ab a b)
     (concat a b))
 #+END_SRC
 
@@ -1654,7 +1654,7 @@ constrained, initial result set.
           qs (if vs? (bindings s) s)
           qp (if vp? (bindings p) p)
           qo (if vo? (bindings o) o)
-          ,#+clj _ #+clj (debug :select-alt qs qp qo)
+          _ (debug :select-alt qs qp qo)
           res (api/select-with-alts ds qs qp qo)]
       (if (seq res)
         (loop [acc (transient []), res res]
@@ -1684,11 +1684,11 @@ constrained, initial result set.
                           (let [vbinds (vmap %)]
                             (if (flt vbinds) vbinds)))
                        #(if (verify %) (vmap %))))]
-      ,#+clj (debug :patterns patterns)
+      (debug :patterns patterns)
       (loop [acc (transient []), ps patterns]
         (if ps
           (let [[qs qp qo] (pmap (vec (first ps)))
-                ,#+clj _ #+clj (debug :select qs qp qo)
+                _ (debug :select qs qp qo)
                 res (api/select ds qs qp qo)]
             (if (seq res)
               (recur
@@ -1766,9 +1766,9 @@ Select only grandchildren for given person:
           (let [visited (set acc)
                 ovals (filter (comp not visited) (set (map o r)))]
             (if (seq ovals)
-              (#+clj r/mapcat #+cljs mapcat
-                     (fn [ov] (dfs-forward* ds o p ov acc min max))
-                     ovals)
+              (#?(:clj r/mapcat :cljs mapcat)
+                 (fn [ov] (dfs-forward* ds o p ov acc min max))
+                 ovals)
               [acc]))
           (if (> (count acc) min) [acc])))
       [acc]))
@@ -1783,60 +1783,63 @@ Select only grandchildren for given person:
           (let [visited (set acc)
                 svals (filter (comp not visited) (set (map s r)))]
             (if (seq svals)
-              (#+clj r/mapcat #+cljs mapcat
-                     (fn [sv] (dfs-backward* ds s p sv acc min max))
-                     svals)
+              (#?(:clj r/mapcat :cljs mapcat)
+                 (fn [sv] (dfs-backward* ds s p sv acc min max))
+                 svals)
               [acc]))
           (if (> (count acc) min) [acc])))
       [acc]))
 
   (defn select-transitive
     ([ds [s p o :as t]]
-       (if (vector? p)
-         (select-transitive ds t (count p) (count p))
-         (select-transitive ds t 1 1000000)))
+     (if (vector? p)
+       (select-transitive ds t (count p) (count p))
+       (select-transitive ds t 1 1000000)))
     ([ds [s p o] mind maxd]
-       (let [mind (max mind 1)
-             maxd (max maxd 1)]
-         (if (= mind maxd)
-           (let [p (if (vector? p) p [p])
-                 p (take mind (cycle p))]
-             (select-join ds {} {} (resolve-path-pattern [s p o])))
-           (let [vs? (qvar? s)
-                 vo? (qvar? o)
-                 v (auto-qvar)
-                 conf (cond
-                       (and vs? vo?) {:s s ;; [?s p ?o]
-                                      :o v
-                                      :bmap {}
-                                      :lookup (fn [b] [(b v) (b s)])
-                                      :bind (fn [p] {s (first p) o (peek p)})
-                                      :search dfs-forward*}
-                       vo?           {:s v ;; [x p ?o]
-                                      :o o
-                                      :bmap {v s}
-                                      :lookup (fn [b] [(b o) (b v)])
-                                      :bind (fn [p] {o (peek p)})
-                                      :search dfs-forward*}
-                       vs?           {:s s ;; [?s p x]
-                                      :o v
-                                      :bmap {v o}
-                                      :lookup (fn [b] [(b s) (b v)])
-                                      :bind (fn [p] {s (peek p)})
-                                      :search dfs-backward*})
-                 {:keys [bind search]} conf
-                 slices (subvec-slices (inc mind) (inc maxd))]
-             (->> (select-with-bindings ds (:bmap conf) {} [(:s conf) p (:o conf)])
-                  (r/map    (:lookup conf))
-                  (r/mapcat #(search ds v p (% 0) [(% 1)] mind maxd))
-                  (r/mapcat slices)
-                  (r/map    bind)
-                  (into #{})))))))
+     (let [mind (max mind 1)
+           maxd (max maxd 1)]
+       (if (= mind maxd)
+         (let [p (if (vector? p) p [p])
+               p (take mind (cycle p))]
+           (select-join ds {} {} (resolve-path-pattern [s p o])))
+         (let [vs? (qvar? s)
+               vo? (qvar? o)
+               v (auto-qvar)
+               conf (cond
+                      (and vs? vo?) {:s s ;; [?s p ?o]
+                                     :o v
+                                     :bmap {}
+                                     :lookup (fn [b] [(b v) (b s)])
+                                     :bind (fn [p] {s (first p) o (peek p)})
+                                     :search dfs-forward*}
+                      vo?           {:s v ;; [x p ?o]
+                                     :o o
+                                     :bmap {v s}
+                                     :lookup (fn [b] [(b o) (b v)])
+                                     :bind (fn [p] {o (peek p)})
+                                     :search dfs-forward*}
+                      vs?           {:s s ;; [?s p x]
+                                     :o v
+                                     :bmap {v o}
+                                     :lookup (fn [b] [(b s) (b v)])
+                                     :bind (fn [p] {s (peek p)})
+                                     :search dfs-backward*})
+               {:keys [bind search]} conf
+               slices (subvec-slices (inc mind) (inc maxd))]
+           (->> (select-with-bindings ds (:bmap conf) {} [(:s conf) p (:o conf)])
+                (r/map    (:lookup conf))
+                (r/mapcat #(search ds v p (% 0) [(% 1)] mind maxd))
+                (r/mapcat slices)
+                (r/map    bind)
+                (into #{})))))))
 #+END_SRC
 
 ** Complete namespace definition                                   :noexport:
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/query.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/query.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.query
+    #?(:cljs
+       (:require-macros
+        [cljs-log.core :refer [debug info warn severe]]))
     (:require
      [thi.ng.trio.core :as api]
      [thi.ng.common.data.core :as d]
@@ -1845,7 +1848,7 @@ Select only grandchildren for given person:
      [thi.ng.validate.core :as v]
      [clojure.set :as set]
      [clojure.core.reducers :as r]
-     ,#+clj [taoensso.timbre :refer [debug info warn error]]))
+     #?(:clj [taoensso.timbre :refer [debug info warn error]])))
 
   <<helpers>>
 

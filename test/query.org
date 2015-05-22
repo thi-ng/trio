@@ -52,18 +52,20 @@
 
 ** Namespace declaration
 
-#+BEGIN_SRC clojure :tangle ../babel/test/cljx/thi/ng/trio/test/query.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/test/thi/ng/trio/test/query.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.test.query
-    ,#+cljs
-    (:require-macros
-     [cemerick.cljs.test :refer [is deftest with-test testing]])
+    #?(:cljs
+       (:require-macros
+        [cemerick.cljs.test :refer [is deftest with-test testing]]))
     (:require
      [thi.ng.validate.core]
      [thi.ng.trio.core :as api]
      [thi.ng.trio.query :as q]
      [thi.ng.common.data.unionfind :as u]
-     ,#+clj  [clojure.test :refer :all]
-     ,#+cljs [cemerick.cljs.test :as t]))
+     #?(:clj
+        [clojure.test :refer :all]
+        :cljs
+        [cemerick.cljs.test :as t])))
 
   <<tests>>
 #+END_SRC

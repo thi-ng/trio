@@ -406,228 +406,193 @@ of the code.
 *** Implementation
 #+BEGIN_SRC clojure :noweb-ref triple
   (deftype Triple
-    #+clj  [s p o ^:unsynchronized-mutable __hash]
-    #+cljs [s p o ^:mutable __hash]
+    #?(:clj  [s p o ^:unsynchronized-mutable __hash])
+    #?(:cljs [s p o ^:mutable __hash])
 #+END_SRC
 **** Clojure
 #+BEGIN_SRC clojure :noweb-ref triple
-  ,#+clj clojure.lang.ILookup
-  ,#+clj (valAt
-         [_ k] (swizzle _ k nil))
-  ,#+clj (valAt
-         [_ k nf] (swizzle _ k nf))
+  #?@(:clj
+      [clojure.lang.ILookup
+       (valAt [_ k] (swizzle _ k nil))
+       (valAt [_ k nf] (swizzle _ k nf))
 
-  ,#+clj java.util.concurrent.Callable
-  ,#+clj (call
-         [_] (.invoke ^clojure.lang.IFn _))
-  ,#+clj java.lang.Runnable
-  ,#+clj (run
-          [_] (.invoke ^clojure.lang.IFn _))
+       java.util.concurrent.Callable
+       (call [_] (.invoke ^clojure.lang.IFn _))
+       java.lang.Runnable
+       (run [_] (.invoke ^clojure.lang.IFn _))
 
-  ,#+clj clojure.lang.IFn
-  ,#+clj (invoke
-         [_ k] (swizzle _ k nil))
-  ,#+clj (invoke
-         [_ k nf] (swizzle _ k nf))
-  ,#+clj (applyTo
-         [_ args]
-         <<tpl-apply(fn="swizzle")>>)
+       clojure.lang.IFn
+       (invoke [_ k] (swizzle _ k nil))
+       (invoke [_ k nf] (swizzle _ k nf))
+       (applyTo
+        [_ args]
+        <<tpl-apply(fn="swizzle")>>)
 
-  ,#+clj clojure.lang.IPersistentVector
-  ,#+clj clojure.lang.Associative
-  ,#+clj (count
-         [_] 3)
-  ,#+clj (length
-         [_] 3)
-  ,#+clj (containsKey
-         [_ k] <<tpl-contains-key>>)
-  ,#+clj (entryAt
-         [_ k] (clojure.lang.MapEntry. k <<tpl-nth-err>>))
-  ,#+clj (assoc
-            [_ k v] (swizzle-assoc _ k v))
-  ,#+clj (assocN
-         [_ k v]
-         <<tpl-assoc-n>>)
+       clojure.lang.IPersistentVector
+       clojure.lang.Associative
+       (count [_] 3)
+       (length [_] 3)
+       (containsKey [_ k] <<tpl-contains-key>>)
+       (entryAt [_ k] (clojure.lang.MapEntry. k <<tpl-nth-err>>))
+       (assoc [_ k v] (swizzle-assoc _ k v))
+       (assocN
+        [_ k v]
+        <<tpl-assoc-n>>)
 
-  ,#+clj java.util.Collection
-  ,#+clj (isEmpty
-         [_] false)
-  ,#+clj (iterator
-         [_] (.iterator ^java.util.Collection (list s p o)))
-  ,#+clj (toArray
-         [_] (object-array _))
-  ,#+clj (size
-         [_] 3)
+       java.util.Collection
+       (isEmpty [_] false)
+       (iterator [_] (.iterator ^java.util.Collection (list s p o)))
+       (toArray [_] (object-array _))
+       (size [_] 3)
 
-  ,#+clj clojure.lang.Sequential
-  ,#+clj clojure.lang.Seqable
-  ,#+clj (seq [_] (seq [s p o]))
-  ,#+clj (cons
-         [_ x] [s p o x])
-  ,#+clj (peek
-         [_] o)
-  ,#+clj (pop
-         [_] [s p])
-  ,#+clj (rseq
-         [_] (seq [o p s]))
-  ,#+clj (nth
-         [_ k] <<tpl-nth-err>>)
-  ,#+clj (nth
-         [_ k nf] <<tpl-nth-nf>>)
-  ,#+clj (equiv
-         [_ x]
-         <<tpl-equals(fn="clojure.lang.Util/equiv")>>)
-  ,#+clj (equals
-         [_ x]
-         <<tpl-equals(fn="clojure.lang.Util/equals")>>)
-  ,#+clj (hashCode
-         [_]
-         <<tpl-hashcode>>)
+       clojure.lang.Sequential
+       clojure.lang.Seqable
+       (seq [_] (seq [s p o]))
+       (cons [_ x] [s p o x])
+       (peek [_] o)
+       (pop [_] [s p])
+       (rseq [_] (seq [o p s]))
+       (nth [_ k] <<tpl-nth-err>>)
+       (nth [_ k nf] <<tpl-nth-nf>>)
+       (equiv
+        [_ x]
+        <<tpl-equals(fn="clojure.lang.Util/equiv")>>)
+       (equals
+        [_ x]
+        <<tpl-equals(fn="clojure.lang.Util/equals")>>)
+       (hashCode
+        [_]
+        <<tpl-hashcode>>)
 
-  ,#+clj clojure.lang.IHashEq
-  ,#+clj (hasheq
-         [_]
-         (or __hash (set! __hash
-                          (mix-collection-hash
-                           <<tpl-hashcode>>
-                           3))))
+       clojure.lang.IHashEq
+       (hasheq
+        [_]
+        (or __hash (set! __hash
+                         (mix-collection-hash
+                          <<tpl-hashcode>>
+                          3))))
 
-  ,#+clj Comparable
-  ,#+clj (compareTo
-         [_ x]
-         <<tpl-compare>>)
+       Comparable
+       (compareTo
+        [_ x]
+        <<tpl-compare>>)
 
-  ,#+clj cp/InternalReduce
-  ,#+clj (internal-reduce
-         [_ f start]
-         <<tpl-reduce-start>>)
+       cp/InternalReduce
+       (internal-reduce
+        [_ f start]
+        <<tpl-reduce-start>>)
 
-  ,#+clj cp/CollReduce
-  ,#+clj (coll-reduce
-         [_ f]
-         <<tpl-reduce>>)
-  ,#+clj (coll-reduce
-         [_ f start]
-         <<tpl-reduce-start>>)
+       cp/CollReduce
+       (coll-reduce
+        [_ f]
+        <<tpl-reduce>>)
+       (coll-reduce
+        [_ f start]
+        <<tpl-reduce-start>>)
 
-  ,#+clj Object
-  ,#+clj (toString
-         [_]
-         (.toString
-          (doto (StringBuilder. "[")
-            (.append (pr-str s))
-            (.append " ")
-            (.append (pr-str p))
-            (.append " ")
-            (.append (pr-str o))
-            (.append "]"))))
+       Object
+       (toString
+        [_]
+        (.toString
+         (doto (StringBuilder. "[")
+           (.append (pr-str s))
+           (.append " ")
+           (.append (pr-str p))
+           (.append " ")
+           (.append (pr-str o))
+           (.append "]"))))
+       ])
 #+END_SRC
 **** ClojureScript protocols
 #+BEGIN_SRC clojure :noweb-ref triple
-  ,#+cljs ICloneable
-  ,#+cljs (-clone
-          [_] (Triple. s p o __hash))
+  #?@(:cljs
+      [ICloneable
+       (-clone
+        [_] (Triple. s p o __hash))
 
-  ,#+cljs ILookup
-  ,#+cljs (-lookup
-          [_ k] (swizzle _ k nil))
-  ,#+cljs (-lookup
-          [_ k nf] (swizzle _ k nf))
+       ILookup
+       (-lookup [_ k] (swizzle _ k nil))
+       (-lookup [_ k nf] (swizzle _ k nf))
 
-  ,#+cljs IFn
-  ,#+cljs (-invoke
-          [_ k] (swizzle _ k nil))
-  ,#+cljs (-invoke
-          [_ k nf] (swizzle _ k nf))
+       IFn
+       (-invoke [_ k] (swizzle _ k nil))
+       (-invoke [_ k nf] (swizzle _ k nf))
 
-  ,#+cljs ICounted
-  ,#+cljs (-count
-          [_] 3)
+       ICounted
+       (-count [_] 3)
 
-  ,#+cljs IAssociative
-  ,#+cljs (-contains-key?
-          [_ k] <<tpl-contains-key>>)
-  ,#+cljs (-assoc
-          [_ k v] (swizzle-assoc _ k v))
+       IAssociative
+       (-contains-key? [_ k] <<tpl-contains-key>>)
+       (-assoc [_ k v] (swizzle-assoc _ k v))
 
-  ,#+cljs IVector
-  ,#+cljs (-assoc-n
-          [_ k v]
-          <<tpl-assoc-n>>)
+       IVector
+       (-assoc-n
+        [_ k v]
+        <<tpl-assoc-n>>)
 
-  ,#+cljs ISequential
-  ,#+cljs ISeq
-  ,#+cljs (-first
-          [_] s)
-  ,#+cljs (-rest
-          [_] <<tpl-rest>>)
+       ISequential
+       ISeq
+       (-first [_] s)
+       (-rest [_] <<tpl-rest>>)
 
-  ,#+cljs INext
-  ,#+cljs (-next
-          [_] <<tpl-rest>>)
+       INext
+       (-next [_] <<tpl-rest>>)
 
-  ,#+cljs ISeqable
-  ,#+cljs (-seq
-          [_] _)
+       ISeqable
+       (-seq [_] _)
 
-  ,#+cljs IReversible
-  ,#+cljs (-rseq
-          [_] (Triple. o p s nil))
+       IReversible
+       (-rseq [_] (Triple. o p s nil))
 
-  ,#+cljs IIndexed
-  ,#+cljs (-nth
-          [_ k] <<tpl-nth-err>>)
-  ,#+cljs (-nth
-          [_ k nf] <<tpl-nth-nf>>)
+       IIndexed
+       (-nth [_ k] <<tpl-nth-err>>)
+       (-nth [_ k nf] <<tpl-nth-nf>>)
 
-  ,#+cljs ICollection
-  ,#+cljs (-conj
-          [_ x] [s p o x])
+       ICollection
+       (-conj [_ x] [s p o x])
 
-  ,#+cljs IStack
-  ,#+cljs (-peek
-          [_] o)
-  ,#+cljs (-pop
-          [_] [s p])
+       IStack
+       (-peek [_] o)
+       (-pop [_] [s p])
 
-  ,#+cljs IComparable
-  ,#+cljs (-compare
-          [_ x]
-          <<tpl-compare>>)
+       IComparable
+       (-compare
+        [_ x]
+        <<tpl-compare>>)
 
-  ,#+cljs IHash
-  ,#+cljs (-hash
-          [_]
-          (or __hash
-              (set! (.-__hash _)
-                    (mix-collection-hash
-                     (-> 31 (+ (hash s))
-                         (bit-or 0)
-                         (imul 31) (+ (hash p))
-                         (bit-or 0)
-                         (imul 31) (+ (hash o))
-                         (bit-or 0))
-                     3))))
+       IHash
+       (-hash
+        [_]
+        (or __hash
+            (set! (.-__hash _)
+                  (mix-collection-hash
+                   (-> 31 (+ (hash s))
+                       (bit-or 0)
+                       (imul 31) (+ (hash p))
+                       (bit-or 0)
+                       (imul 31) (+ (hash o))
+                       (bit-or 0))
+                   3))))
 
-  ,#+cljs IEquiv
-  ,#+cljs (-equiv
-          [_ x]
-          (if (instance? Triple x)
-            (and (= s (.-s ^Triple x)) (= p (.-p ^Triple x)) (= o (.-o ^Triple x)))
-            (and (sequential? x) (== 3 (count x))
-                 (= s (nth x 0)) (= p (nth x 1)) (= o (nth x 2)))))
+       IEquiv
+       (-equiv
+        [_ x]
+        (if (instance? Triple x)
+          (and (= s (.-s ^Triple x)) (= p (.-p ^Triple x)) (= o (.-o ^Triple x)))
+          (and (sequential? x) (== 3 (count x))
+               (= s (nth x 0)) (= p (nth x 1)) (= o (nth x 2)))))
 
-  ,#+cljs IReduce
-  ,#+cljs (-reduce
-          [coll f]
-          <<tpl-reduce>>)
-  ,#+cljs (-reduce
-          [coll f start]
-          <<tpl-reduce-start>>)
+       IReduce
+       (-reduce
+        [coll f]
+        <<tpl-reduce>>)
+       (-reduce
+        [coll f start]
+        <<tpl-reduce-start>>)
 
-  ,#+cljs Object
-  ,#+cljs (toString
-          [_] (str "[" (pr-str s) " " (pr-str p) " " (pr-str o) "]"))
+       Object
+       (toString [_] (str "[" (pr-str s) " " (pr-str p) " " (pr-str o) "]"))
+       ])
 #+END_SRC
 
 **** End of triple type
@@ -637,9 +602,11 @@ of the code.
 
 *** Override print methods
 #+BEGIN_SRC clojure :noweb-ref triple
-  ,#+clj (defmethod clojure.pprint/simple-dispatch Triple
-    [^Triple o] ((get-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector) o))
-  ,#+clj (defmethod print-method Triple [^Triple o ^java.io.Writer w] (.write w (.toString o)))
+  #?@(:clj
+       [(defmethod clojure.pprint/simple-dispatch Triple
+          [^Triple o] ((get-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector) o))
+        (defmethod print-method Tripl
+          [^Triple o ^java.io.Writer w] (.write w (.toString o)))])
 #+END_SRC
 
 *** Swizzling
@@ -1087,8 +1054,7 @@ implementation for an efficient inferencer...
                        (filter #(first (.-triple ^TripleNode (nodes %))))))]
         (if (seq ids)
           (loop [acc (transient [])
-                 ids (into #+clj clojure.lang.PersistentQueue/EMPTY
-                           ,#+cljs cljs.core.PersistentQueue.EMPTY ids)]
+                 ids (into #?(:clj clojure.lang.PersistentQueue/EMPTY :cljs cljs.core.PersistentQueue.EMPTY) ids)]
             (if (seq ids)
               (let [^TripleNode n (nodes (peek ids))
                     c (get-children n)]
@@ -1142,25 +1108,25 @@ implementation for an efficient inferencer...
              (next ps))))
         g)))
 
-  ,#+clj
-  (defn triple-graph->dot
-    ([g]
-       (str "digraph g {\n"
-            "node[color=black,style=filled,fontname=Inconsolata,fontcolor=white,fontsize=9];\n"
-            "edge[fontname=Inconsolata,fontsize=9];\n"
-            (triple-graph->dot g 0 "")
-            "}"))
-    ([g id dot]
-       (let [n (get-node-for-id g id)
-             t (.-triple ^TripleNode n)
-             d (format
-                "%d[label=\"%d: %s\",color=%s];\n"
-                id id (pr-str t)
-                (if (is-leaf? n) "red" "grey"))]
-         (reduce
-          (fn [dot id'] (triple-graph->dot g id' (str dot (format "%d -> %d;\n" id id'))))
-          (str dot d)
-          (get-children n)))))
+  #?(:clj
+      (defn triple-graph->dot
+        ([g]
+         (str "digraph g {\n"
+              "node[color=black,style=filled,fontname=Inconsolata,fontcolor=white,fontsize=9];\n"
+              "edge[fontname=Inconsolata,fontsize=9];\n"
+              (triple-graph->dot g 0 "")
+              "}"))
+        ([g id dot]
+         (let [n (get-node-for-id g id)
+               t (.-triple ^TripleNode n)
+               d (format
+                  "%d[label=\"%d: %s\",color=%s];\n"
+                  id id (pr-str t)
+                  (if (is-leaf? n) "red" "grey"))]
+           (reduce
+            (fn [dot id'] (triple-graph->dot g id' (str dot (format "%d -> %d;\n" id id'))))
+            (str dot d)
+            (get-children n))))))
 #+END_SRC
 
 *** Constructors
@@ -1363,7 +1329,7 @@ regexp matches. *Note:* Non-string values are cast to strings in order to
 apply the regexps.
 
 #+BEGIN_SRC clojure :noweb-ref search
-  #+clj (defn regexp? [x] (instance? java.util.regex.Pattern x))
+  #?(:clj (defn regexp? [x] (instance? java.util.regex.Pattern x)))
 
   (defn regexp-matches
     [ds f re]
@@ -1472,36 +1438,40 @@ with the =triple-seq-associative= fn.
 
 #+BEGIN_SRC clojure :noweb-ref convert
   (extend-protocol PTripleSeq
-    ,#+clj  clojure.lang.Sequential
-    ,#+cljs PersistentVector
+    #?(:clj clojure.lang.Sequential
+         :cljs PersistentVector)
     (triple-seq [_] (triple-seq-sequential _))
-    ,#+cljs List
-    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
-    ,#+cljs LazySeq
-    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
-    ,#+cljs IndexedSeq
-    ,#+cljs (triple-seq [_] (triple-seq-sequential _))
-    ,#+clj  clojure.lang.IPersistentMap
-    ,#+cljs PersistentHashMap
+    #?@(:cljs
+          [List
+           (triple-seq [_] (triple-seq-sequential _))
+           LazySeq
+           (triple-seq [_] (triple-seq-sequential _))
+           IndexedSeq
+           (triple-seq [_] (triple-seq-sequential _))])
+    #?(:clj clojure.lang.IPersistentMap
+         :cljs PersistentHashMap)
     (triple-seq [_] (triple-seq-associative _))
-    ,#+cljs PersistentArrayMap
-    ,#+cljs (triple-seq [_] (triple-seq-associative _)))
+    #?@(:cljs
+          [PersistentArrayMap
+           (triple-seq [_] (triple-seq-associative _))]))
 
   (extend-protocol PModelConvert
-    ,#+clj  clojure.lang.Sequential
-    ,#+cljs PersistentVector
+    #?(:clj clojure.lang.Sequential
+         :cljs PersistentVector)
     (as-model [_] (apply plain-store (triple-seq-sequential _)))
-    ,#+cljs List
-    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
-    ,#+cljs LazySeq
-    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
-    ,#+cljs IndexedSeq
-    ,#+cljs (as-model [_] (apply plain-store (triple-seq-sequential _)))
-    ,#+clj  clojure.lang.IPersistentMap
-    ,#+cljs PersistentHashMap
+    #?@(:cljs
+          [List
+           (as-model [_] (apply plain-store (triple-seq-sequential _)))
+           LazySeq
+           (as-model [_] (apply plain-store (triple-seq-sequential _)))
+           IndexedSeq
+           (as-model [_] (apply plain-store (triple-seq-sequential _)))])
+    #?(:clj clojure.lang.IPersistentMap
+         :cljs PersistentHashMap)
     (as-model [_] (apply plain-store (triple-seq-associative _)))
-    ,#+cljs PersistentArrayMap
-    ,#+cljs (as-model [_] (apply plain-store (triple-seq-associative _))))
+    #?@(:cljs
+          [PersistentArrayMap
+           (as-model [_] (apply plain-store (triple-seq-associative _)))]))
 #+END_SRC
 
 ** Clojure collection queries (PModelSelect)
@@ -1527,24 +1497,29 @@ with the =triple-seq-associative= fn.
         (filter _)))
 
   (extend-protocol PModelSelect
-    ,#+clj  clojure.lang.Sequential
-    ,#+cljs PersistentVector
-    (select [_] (select-from-seq _ nil nil nil))
-    (select [_ s p o] (select-from-seq _ s p o))
-    ,#+cljs List
-    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
-    ,#+cljs (select [_ s p o] (select-from-seq _ s p o))
-    ,#+cljs LazySeq
-    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
-    ,#+cljs (select [_ s p o] (select-from-seq _ s p o))
-    ,#+cljs IndexedSeq
-    ,#+cljs (select [_] (select-from-seq _ nil nil nil))
-    ,#+cljs (select [_ s p o] (select-from-seq _ s p o)))
+    #?(:clj  clojure.lang.Sequential
+        :cljs PersistentVector)
+    (select
+      ([_] (select-from-seq _ nil nil nil))
+      ([_ s p o] (select-from-seq _ s p o)))
+    #?@(:cljs
+         [List
+          (select
+           ([_] (select-from-seq _ nil nil nil))
+           ([_ s p o] (select-from-seq _ s p o)))
+          LazySeq
+          (select
+           ([_] (select-from-seq _ nil nil nil))
+           ([_ s p o] (select-from-seq _ s p o)))
+          IndexedSeq
+          (select
+           ([_] (select-from-seq _ nil nil nil))
+           ([_ s p o] (select-from-seq _ s p o)))]))
 #+END_SRC
 
 ** Complete namespace definition
 
-#+BEGIN_SRC clojure :tangle ../babel/src/cljx/thi/ng/trio/core.cljx :noweb yes :mkdirp yes :padline no
+#+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/core.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.core
     (:refer-clojure :exclude [object? indexed?])
     (:require
@@ -1552,8 +1527,8 @@ with the =triple-seq-associative= fn.
      [thi.ng.common.data.unionfind :as u]
      [thi.ng.common.error :as err]
      [clojure.set :as set]
-     ,#+clj [clojure.pprint]
-     ,#+clj [clojure.core.protocols :as cp]))
+     #?@(:clj [[clojure.pprint]
+                [clojure.core.protocols :as cp]])))
 
   <<protos>>
 
