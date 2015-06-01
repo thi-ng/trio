@@ -93,44 +93,71 @@ target/trio-<<version>>.js
 *** Runtime
 **** [[https://github.com/clojure/clojure][Clojure]]
 #+BEGIN_SRC clojure :noweb-ref dep-clj
-[org.clojure/clojure "1.7.0-beta3"]
+[org.clojure/clojure "1.7.0-RC1"]
 #+END_SRC
+
 **** [[https://github.com/clojure/clojurescript][ClojureScript]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs
-[org.clojure/clojurescript "0.0-3269"]
+[org.clojure/clojurescript "0.0-3297"]
 #+END_SRC
+
 **** [[https://github.com/thi-ng/common/][thi.ng/common]]
 #+BEGIN_SRC clojure :noweb-ref dep-common
 [thi.ng/common "0.3.2"]
 #+END_SRC
+
+**** [[https://github.com/thi-ng/dstruct][thi.ng/dstruct]]
+#+NAME: dep-dstruct
+#+BEGIN_SRC clojure
+[thi.ng/dstruct "0.1.0"]
+#+END_SRC
+
+**** [[https://github.com/thi-ng/math][thi.ng/math]]
+#+NAME: dep-math
+#+BEGIN_SRC clojure
+[thi.ng/math "0.1.0"]
+#+END_SRC
+
+**** [[https://github.com/thi-ng/strf][thi.ng/strf]]
+#+NAME: dep-strf
+#+BEGIN_SRC clojure
+[thi.ng/strf "0.1.0"]
+#+END_SRC
+
 **** [[https://github.com/thi-ng/validate/][thi.ng/validate]]
 #+BEGIN_SRC clojure :noweb-ref dep-validate
 [thi.ng/validate "0.1.3"]
 #+END_SRC
+
 **** [[https://github.com/clojure/data.csv][data.csv]]
 #+BEGIN_SRC clojure :noweb-ref dep-csv
 [org.clojure/data.csv "0.1.2"]
 #+END_SRC
+
 **** [[https://github.com/ptaoussanis/timbre][timbre]]
 #+BEGIN_SRC clojure :noweb-ref dep-timbre
 [com.taoensso/timbre "3.3.1"]
 #+END_SRC
+
 **** [[https://github.com/postspectacular/cljs-log][cljs-log]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs-log
 [cljs-log "0.2.1"]
 #+END_SRC
+
 *** Development
 **** [[https://github.com/hugoduncan/criterium][Criterium]]
 #+BEGIN_SRC clojure :noweb-ref dep-criterium
 [criterium "0.4.3"]
 #+END_SRC
+
 **** [[https://github.com/cemerick/clojurescript.test][clojurescript.test]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljs-test
 [com.cemerick/clojurescript.test "0.3.3"]
 #+END_SRC
+
 **** [[https://github.com/emezeske/lein-cljsbuild][Cljsbuild]]
 #+BEGIN_SRC clojure :noweb-ref dep-cljsbuild
-[lein-cljsbuild "1.0.5"]
+[lein-cljsbuild "1.0.6"]
 #+END_SRC
 
 ** Leiningen coordinates
@@ -142,7 +169,7 @@ target/trio-<<version>>.js
 ** Building this project
 
 This project is written in a literate programming format and requires
-[[https://www.gnu.org/software/emacs/][Emacs]] & [[http://orgmode.org][Org-mode]] to generate usable source code in [[https://github.com/lynaghk/cljx][CLJX]] form. Assuming
+[[https://www.gnu.org/software/emacs/][Emacs]] & [[http://orgmode.org][Org-mode]] to generate usable source code. Assuming
 both tools are installed, the easiest way to generate a working
 project is via command line (make sure =emacs= is on your path or else
 edit its path in =tangle.sh=):
@@ -175,12 +202,11 @@ further experimentation in the browser.
 
 *** Working with the REPL
 
-Since the generated =project.clj= (see below) includes REPL hooks for
-CLJX, editing files in Org-mode, then re-loading & testing changes is
-quite trivial. Simply launch a REPL (via =lein= or Emacs) as usual.
-Everytime you've made changes to an =.org= file, re-tangle it from
-Emacs (=C-c C-v t=) or =tangle.sh=, then reload the namespace in the
-REPL via =(require 'thi.ng.trio... :reload)= or similar.
+Editing code blocks or files in Org-mode, then re-loading & testing
+changes is quite trivial. Simply launch a REPL (via =lein= or Emacs)
+as usual. Everytime you've made changes to an =.org= file, re-tangle
+it from Emacs (=C-c C-v t=) or =tangle.sh=, then reload the namespace
+in the REPL via =(require 'thi.ng.trio... :reload)= or similar.
 
 ** Leiningen project file                                          :noexport:
 
@@ -198,6 +224,9 @@ REPL via =(require 'thi.ng.trio... :reload)= or similar.
     
     :dependencies [<<dep-clj>>
                    <<dep-common>>
+                   <<dep-dstruct>>
+                   <<dep-math>>
+                   <<dep-strf>>
                    <<dep-validate>>
                    <<dep-csv>>
                    <<dep-timbre>>
@@ -260,9 +289,10 @@ symbol =version= holding the version string defined above:
 
 ** Release history
 
-| *Version* | *Released* | *Description*      | *Lein coordinates*      | *Tagged Github URL* |
-|-----------+------------+--------------------+-------------------------+---------------------|
-|     0.1.0 | 2015-02-25 | 1st public release | =[thi.ng/trio "0.1.0"]= | [[https://github.com/thi-ng/trio/tree/0.1.0][0.1.0]]               |
+| *Version*      | *Released* | *Description*        | *Lein coordinates*               | *Tagged Github URL* |
+|----------------+------------+----------------------+----------------------------------+---------------------|
+| 0.2.0-SNAPSHOT | n/a        | CLJ1.7.0 refactoring | =[thi.ng/trio "0.2.0-SNAPSHOT"]= |                     |
+| 0.1.0          | 2015-02-25 | 1st public release   | =[thi.ng/trio "0.1.0"]=          | [[https://github.com/thi-ng/trio/tree/0.1.0][0.1.0]]               |
 
 ** Contributors
 

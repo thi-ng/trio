@@ -59,13 +59,13 @@
 ** Type parsing helpers
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  #?@(:clj
-      [(defn numberformat
-         [fmt]
-         (let [nf (DecimalFormat/getInstance)] (.applyPattern nf fmt) nf))
-
-       (defn parse-number
-         [^DecimalFormat nf ^String x] (.parse nf x))])
+  #?(:clj
+     (defn numberformat
+       [fmt]
+       (let [nf (DecimalFormat/getInstance)] (.applyPattern nf fmt) nf)))
+  #?(:clj
+     (defn parse-number
+       [^DecimalFormat nf ^String x] (.parse nf x)))
 
   (defn value-map
     ([key] (fn [_ _ d _] [{key d}]))

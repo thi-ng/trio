@@ -217,21 +217,22 @@
     [uri xs]
     (->> xs (map (fn [x] [x (str uri (name x))])) (into {})))
 
-  #?@(:clj
-       [(defn load-vocab-triples
-          [src]
-          (let [{:keys [prefixes triples]}
-                (->> src
-                     (io/input-stream)
-                     (slurp)
-                     (edn/read-string))]
-            {:prefixes prefixes
-             :triples (triple-seq-with-prefixes prefixes triples)}))
+  #?(:clj
+     (defn load-vocab-triples
+       [src]
+       (let [{:keys [prefixes triples]}
+             (->> src
+                  (io/input-stream)
+                  (slurp)
+                  (edn/read-string))]
+         {:prefixes prefixes
+          :triples (triple-seq-with-prefixes prefixes triples)})))
 
-        (defn load-vocabs-as-model
-          [src]
-          (let [{:keys [prefixes triples]} (load-vocab-triples src)]
-            (vocabs-from-model prefixes (api/as-model triples))))])
+  #?(:clj
+     (defn load-vocabs-as-model
+       [src]
+       (let [{:keys [prefixes triples]} (load-vocab-triples src)]
+         (vocabs-from-model prefixes (api/as-model triples)))))
 #+END_SRC
 
 ** Complete namespace definitions

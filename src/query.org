@@ -26,6 +26,7 @@
          - [[#result-aggregation--grouping][Result aggregation & grouping]]
              - [[#example][Example]]
              - [[#implementation][Implementation]]
+             - [[#aggregation--grouping-operations][Aggregation & grouping operations]]
          - [[#query-validation][Query validation]]
              - [[#validation-helpers][Validation helpers]]
      - [[#lowlevel-query-functions][Lowlevel query functions]]
@@ -1099,14 +1100,11 @@ result map and the return value is used to define grouping.
 
 Let's use once more the above example graph of book authors. We will
 now query this graph using grouping and compute some aggregate stats
-for each author:
+for each author. (Here we use some predefined aggregation functions,
+see section further below)
 
 #+BEGIN_SRC clojure
   ;; Aggregate query example
-  ;; first define some aggregation functions:
-
-  (defn avg [vals] (/ (reduce + vals) (count vals)))
-  (defn max' [vals] (reduce max vals))
 
   ;; retrieve book prices, group by author
   ;; compute avg. & max price, group size per author
@@ -1117,8 +1115,8 @@ for each author:
     :from ds
     :query '[{:where [[?a :author ?b] [?b :price ?p]]}]
     :group '?a
-    :aggregate {'?avg {:use '?p :fn avg}
-                '?max {:use '?p :fn max'}
+    :aggregate {'?avg {:use '?p :fn q/mean}
+                '?max {:use '?p :fn q/max}
                 '?num count}
     :filter {'?avg #(> % 10)}})
 
@@ -1260,6 +1258,57 @@ projection, both for grouped & ungrouped results.
         (if catch-all?
           (compile-query-step qfn filter :group-aggregates-all)
           (compile-query-step qfn [svars filter] :group-aggregates-simple)))))
+#+END_SRC
+
+**** Aggregation & grouping operations
+***** Statistics
+
+#+BEGIN_SRC clojure :noweb-ref agg-helpers
+  (defn mean
+    "Aggregation function, computes mean of given values (as double)."
+    [vals] (double (/ (reduce + vals) (count vals))))
+
+  (defn median
+    "Aggregation function, computes median of given values."
+    [vals]
+    (nth (sort vals) (/ (count vals) 2)))
+
+  (defn min
+    "Aggregation function, computes minimum of given values."
+    [vals] (reduce clojure.core/min vals))
+
+  (defn max
+    "Aggregation function, computes maximum of given values."
+    [vals] (reduce clojure.core/max vals))
+
+  (defn percentile
+    "Aggregation HOF, takes percentile value (0-100), returns aggration
+    function accepting a seq of query var results and computes requested
+    percentile."
+    [n]
+    {:pre [(integer? n) (m/in-range? 0 100 n)]}
+    (fn [vals]
+      (m/percentile n (sort vals))))
+
+  (defn quartile
+    "Aggregation HOF, takes quartile value (1-4), returns aggration
+    function accepting a seq of query var results and computes requested
+    quartile subset."
+    [n]
+    {:pre [(integer? n) (m/in-range? 1 4 n)]}
+    (fn [vals]
+      (m/quartile n (sort vals))))
+#+END_SRC
+
+***** Binning
+
+#+BEGIN_SRC clojure :noweb-ref agg-helpers
+  (defn bins-of
+    "Grouping HOF, accepts a bin size and query var, returns grouping
+    function binning values of qvar to steps of bin size."
+    [n qvar]
+    {:pre [(number? n) (pos? n) (qvar? qvar)]}
+    (fn [res] (* (m/floor (/ (res qvar) n)) n)))
 #+END_SRC
 
 *** Query validation
@@ -1754,7 +1803,7 @@ Select only grandchildren for given person:
     at index 0 and with an increasing length from min to max."
     [n1 n2]
     (fn [path]
-      (mapv #(subvec path 0 %) (range n1 (inc (min (count path) n2))))))
+      (mapv #(subvec path 0 %) (range n1 (inc (clojure.core/min (count path) n2))))))
 
   (defn dfs-forward*
     [ds s p sv acc min max]
@@ -1796,8 +1845,8 @@ Select only grandchildren for given person:
        (select-transitive ds t (count p) (count p))
        (select-transitive ds t 1 1000000)))
     ([ds [s p o] mind maxd]
-     (let [mind (max mind 1)
-           maxd (max maxd 1)]
+     (let [mind (clojure.core/max mind 1)
+           maxd (clojure.core/max maxd 1)]
        (if (= mind maxd)
          (let [p (if (vector? p) p [p])
                p (take mind (cycle p))]
@@ -1837,20 +1886,25 @@ Select only grandchildren for given person:
 ** Complete namespace definition                                   :noexport:
 #+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/query.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.query
+    (:refer-clojure :exclude [min max])
     #?(:cljs
        (:require-macros
         [cljs-log.core :refer [debug info warn severe]]))
     (:require
      [thi.ng.trio.core :as api]
-     [thi.ng.common.data.core :as d]
+     [thi.ng.dstruct.core :as d]
+     [thi.ng.dstruct.unionfind :as uf]
+     [thi.ng.math.core :as m]
      [thi.ng.common.error :as err]
-     [thi.ng.common.data.unionfind :as uf]
      [thi.ng.validate.core :as v]
      [clojure.set :as set]
      [clojure.core.reducers :as r]
-     #?(:clj [taoensso.timbre :refer [debug info warn error]])))
+     #?(:clj
+        [taoensso.timbre :refer [debug info warn error]])))
 
   <<helpers>>
+
+  <<agg-helpers>>
 
   <<joins>>
 

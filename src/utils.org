@@ -46,7 +46,7 @@
 #+BEGIN_SRC clojure :tangle ../babel/src/thi/ng/trio/utils.cljc :noweb yes :mkdirp yes :padline no
   (ns thi.ng.trio.utils
     (:require
-     [thi.ng.common.stringformat :as f]
+     [thi.ng.strf.core :as f]
      [clojure.string :as str]))
 
   <<case-convert>>

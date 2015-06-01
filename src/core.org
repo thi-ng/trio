@@ -602,11 +602,12 @@ of the code.
 
 *** Override print methods
 #+BEGIN_SRC clojure :noweb-ref triple
-  #?@(:clj
-       [(defmethod clojure.pprint/simple-dispatch Triple
-          [^Triple o] ((get-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector) o))
-        (defmethod print-method Tripl
-          [^Triple o ^java.io.Writer w] (.write w (.toString o)))])
+  #?(:clj
+     (defmethod clojure.pprint/simple-dispatch Triple
+       [^Triple o] ((get-method clojure.pprint/simple-dispatch clojure.lang.IPersistentVector) o)))
+  #?(:clj
+     (defmethod print-method Triple
+       [^Triple o ^java.io.Writer w] (.write w (.toString o))))
 #+END_SRC
 
 *** Swizzling
@@ -1523,12 +1524,13 @@ with the =triple-seq-associative= fn.
   (ns thi.ng.trio.core
     (:refer-clojure :exclude [object? indexed?])
     (:require
-     [thi.ng.common.data.core :as d]
-     [thi.ng.common.data.unionfind :as u]
+     [thi.ng.dstruct.core :as d]
+     [thi.ng.dstruct.unionfind :as u]
      [thi.ng.common.error :as err]
      [clojure.set :as set]
-     #?@(:clj [[clojure.pprint]
-                [clojure.core.protocols :as cp]])))
+     #?@(:clj
+         [[clojure.pprint]
+          [clojure.core.protocols :as cp]])))
 
   <<protos>>
 

@@ -61,7 +61,7 @@
      [thi.ng.validate.core]
      [thi.ng.trio.core :as api]
      [thi.ng.trio.query :as q]
-     [thi.ng.common.data.unionfind :as u]
+     [thi.ng.dstruct.unionfind :as u]
      #?(:clj
         [clojure.test :refer :all]
         :cljs

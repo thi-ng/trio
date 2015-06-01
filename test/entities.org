@@ -57,9 +57,11 @@
      [thi.ng.trio.utils :as utils]
      [thi.ng.trio.vocabs.dcterms :refer [dcterms]]
      [thi.ng.trio.entities.utils :as eu]
-     #?@(:clj  [[thi.ng.trio.entities :refer [defentity]]
-                [clojure.test :refer :all]]
-         :cljs [[cemerick.cljs.test :as t]])))
+     #?@(:clj
+         [[thi.ng.trio.entities :refer [defentity]]
+          [clojure.test :refer :all]]
+         :cljs
+         [[cemerick.cljs.test :as t]])))
 
   <<tests>>
 #+END_SRC
