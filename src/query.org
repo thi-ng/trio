@@ -1601,7 +1601,8 @@ constrained, initial result set.
   (defn join
     [a b]
     (->> (set/join a b)
-         (mapcat
+         (seq)
+         #_(mapcat
           (fn [k]
             (if (unique-bindings? k)
               [k])))))
