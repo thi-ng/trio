@@ -285,7 +285,7 @@ The above call to =defentity= will result in the following:
      [thi.ng.trio.entities.utils :as eu]
      [thi.ng.trio.vocabs.rdf :refer [rdf]]
      [thi.ng.validate.core :as v]
-     [thi.ng.common.error :as err]))
+     [thi.ng.xerror.core :as err]))
 
   <<macros>>
 #+END_SRC

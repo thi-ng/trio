@@ -1526,7 +1526,7 @@ with the =triple-seq-associative= fn.
     (:require
      [thi.ng.dstruct.core :as d]
      [thi.ng.dstruct.unionfind :as u]
-     [thi.ng.common.error :as err]
+     [thi.ng.xerror.core :as err]
      [clojure.set :as set]
      #?@(:clj
          [[clojure.pprint]
