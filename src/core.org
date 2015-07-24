@@ -34,6 +34,7 @@
          - [[#sequential-collections][Sequential collections]]
          - [[#protocol-implementations][Protocol implementations]]
      - [[#clojure-collection-queries-pmodelselect][Clojure collection queries (PModelSelect)]]
+     - [[#tagged-reader-literals][Tagged reader literals]]
      - [[#complete-namespace-definition][Complete namespace definition]]
 
 * Namespace: thi.ng.trio.core
@@ -494,7 +495,7 @@ of the code.
        (toString
         [_]
         (.toString
-         (doto (StringBuilder. "[")
+         (doto (StringBuilder. "#trio/Triple [")
            (.append (pr-str s))
            (.append " ")
            (.append (pr-str p))
@@ -665,6 +666,7 @@ of the code.
       2 (Triple. (.-s _) (.-p _) v nil)
       (swizzle-assoc* _ {\s 0 \p 1 \o 2} k v)))
 #+END_SRC
+
 *** Constructor
 #+BEGIN_SRC clojure :noweb-ref triple
   (defn triple
@@ -707,7 +709,9 @@ of the code.
                acc))))
      [] outer))
 
-  (defrecord PlainMemoryStore [spo pos osp size]
+  (deftype PlainMemoryStore [spo pos osp size]
+    Object
+    (toString [_] (str "#trio/MemStore " (pr-str (vec (select _ nil nil nil)))))
     PModelUpdate
     (add-triple
       [_ [s p o :as t]]
@@ -837,6 +841,10 @@ of the code.
     PAliasModelSupport
     (rewrite-alias
       [_ a b] (rewrite-alias-naive _ a b)))
+
+  #?(:clj
+     (defmethod print-method
+       PlainMemoryStore [^PlainMemoryStore o ^java.io.Writer w] (.write w (.toString o))))
 #+END_SRC
 
 *** Store with alias support
@@ -1135,6 +1143,9 @@ implementation for an efficient inferencer...
   (defn plain-store
     [& triples]
     (add-triples (PlainMemoryStore. (hash-map) (hash-map) (hash-map) 0) triples))
+
+  (defn plain-store-from-reader
+    [triples] (apply plain-store triples))
 
   (defn alias-store
     [store aliases & triples]
@@ -1516,6 +1527,13 @@ with the =triple-seq-associative= fn.
           (select
            ([_] (select-from-seq _ nil nil nil))
            ([_ s p o] (select-from-seq _ s p o)))]))
+#+END_SRC
+
+** Tagged reader literals
+
+#+BEGIN_SRC clojure :tangle ../babel/src/data_readers.clj
+{trio/Triple   thi.ng.trio.core/triple
+ trio/MemStore thi.ng.trio.core/plain-store-from-reader}
 #+END_SRC
 
 ** Complete namespace definition

@@ -127,7 +127,7 @@ target/trio-<<version>>.js
 **** [[https://github.com/thi-ng/xerror][thi.ng/xerror]]
 #+NAME: dep-xerror
 #+BEGIN_SRC clojure
-[thi.ng/strf "0.1.0"]
+[thi.ng/xerror "0.1.0"]
 #+END_SRC
 
 **** [[https://github.com/clojure/data.csv][data.csv]]
