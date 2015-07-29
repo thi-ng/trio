@@ -170,6 +170,8 @@
 
 #+BEGIN_SRC clojure :noweb-ref helpers
   (defn expand-pname
+    "Takes a prefix map and pname (\"prefix:name\") and if a valid
+    prefix, returns expanded URI or else nil."
     [prefixes x]
     (if (string? x)
       (let [[[_ p n]] (re-seq #"^([A-Za-z0-9\-_]+):([A-Za-z0-9\-_]*)$" x)]
@@ -177,10 +179,12 @@
           (str p n)))))
 
   (defn expand-pname-maybe
+    "Like expand-pname, but returns original, if it can't be expanded."
     [prefixes x]
     (or (expand-pname prefixes x) x))
 
   (defn expand-pnames-in-triple
+    "Attempts to expand all pnames in given triple using expand-pname-maybe."
     [prefixes [s p o]]
     (api/triple
      (expand-pname-maybe prefixes s)
@@ -188,6 +192,8 @@
      (expand-pname-maybe prefixes o)))
 
   (defn find-prefix
+    "Takes a prefix map and URI, attempts to find pname prefix and if
+    found returns pname as 2-elem vector of [prefix name], else nil."
     [prefixes ^String uri]
     (loop [[[pre puri] & more] (seq prefixes)]
       (when pre
