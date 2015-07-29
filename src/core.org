@@ -3,6 +3,7 @@
 * Contents                                                         :toc_3_gh:
  - [[#namespace-thingtriocore][Namespace: thi.ng.trio.core]]
      - [[#protocol-definitions][Protocol definitions]]
+         - [[#ptriple][PTriple]]
          - [[#ptripleseq][PTripleSeq]]
          - [[#pmodelconvert][PModelConvert]]
          - [[#pmodel][PModel]]
@@ -45,6 +46,16 @@ a flexible dataset type to aggregate models/stores and query multiple
 at once.
 
 ** Protocol definitions
+
+*** PTriple
+
+#+BEGIN_SRC clojure :noweb-ref protos
+  (defprotocol PTriple
+    (triple-id [_])
+    (subject [_])
+    (predicate [_])
+    (object [_]))
+#+END_SRC
 
 *** PTripleSeq
 
@@ -246,6 +257,10 @@ for more details.
 ** Helper functions
 
 #+BEGIN_SRC clojure :noweb-ref helpers
+  (def ^:private triple-counter (atom 0))
+
+  (defn- next-triple-id [] (swap! triple-counter inc))
+
   (defn- remove-from-index
     [idx i1 i2 i3]
     (let [kv (idx i1)
@@ -318,9 +333,9 @@ of the code.
 **** assocN
 #+BEGIN_SRC clojure :noweb-ref tpl-assoc-n
   (case (int k)
-    0 (Triple. v p o nil)
-    1 (Triple. s v o nil)
-    2 (Triple. s p v nil)
+    0 (Triple. v p o (next-triple-id) nil)
+    1 (Triple. s v o (next-triple-id) nil)
+    2 (Triple. s p v (next-triple-id) nil)
     (err/key-error! k))
 #+END_SRC
 **** containsKey
@@ -376,10 +391,6 @@ of the code.
 #+BEGIN_SRC clojure :noweb-ref tpl-rest
   (cons p (cons o nil))
 #+END_SRC
-**** rseq
-#+BEGIN_SRC clojure :noweb-ref tpl-rseq
-  
-#+END_SRC
 **** reduce
 #+BEGIN_SRC clojure :noweb-ref tpl-reduce
   (let [acc (f s p)]
@@ -407,8 +418,8 @@ of the code.
 *** Implementation
 #+BEGIN_SRC clojure :noweb-ref triple
   (deftype Triple
-    #?(:clj  [s p o ^:unsynchronized-mutable __hash])
-    #?(:cljs [s p o ^:mutable __hash])
+    #?(:clj  [s p o id ^:unsynchronized-mutable __hash])
+    #?(:cljs [s p o id ^:mutable __hash])
 #+END_SRC
 **** Clojure
 #+BEGIN_SRC clojure :noweb-ref triple
@@ -501,6 +512,8 @@ of the code.
            (.append (pr-str p))
            (.append " ")
            (.append (pr-str o))
+           (.append " ")
+           (.append (pr-str id))
            (.append "]"))))
        ])
 #+END_SRC
@@ -509,7 +522,7 @@ of the code.
   #?@(:cljs
       [ICloneable
        (-clone
-        [_] (Triple. s p o __hash))
+        [_] (Triple. s p o id __hash))
 
        ILookup
        (-lookup [_ k] (swizzle _ k nil))
@@ -543,7 +556,7 @@ of the code.
        (-seq [_] _)
 
        IReversible
-       (-rseq [_] (Triple. o p s nil))
+       (-rseq [_] (seq o p s))
 
        IIndexed
        (-nth [_ k] <<tpl-nth-err>>)
@@ -596,6 +609,14 @@ of the code.
        ])
 #+END_SRC
 
+**** PTriple
+#+BEGIN_SRC clojure :noweb-ref triple
+  PTriple
+  (triple-id [_] id)
+  (subject [_] s)
+  (predicate [_] p)
+  (object [_] o)
+#+END_SRC
 **** End of triple type
 #+BEGIN_SRC clojure :noweb-ref triple
   )
@@ -641,6 +662,7 @@ of the code.
                (lookup3 _ (nth n 0) default)
                (lookup3 _ (nth n 1) default)
                (lookup3 _ (nth n 2) default)
+               (next-triple-id)
                nil)
             (or default (err/key-error! k)))))))
 
@@ -652,26 +674,30 @@ of the code.
         (loop [acc (vec _), i 0, n n]
           (if n
             (recur (assoc acc (keymap (first n)) (v i)) (inc i) (next n))
-            (Triple. (acc 0) (acc 1) (acc 2) nil)))
+            (Triple. (acc 0) (acc 1) (acc 2) (next-triple-id) nil)))
         (err/key-error! k))))
 
   (defn- swizzle-assoc
     [^Triple _ k v]
     (case k
-      :s (Triple. v (.-p _) (.-o _) nil)
-      :p (Triple. (.-s _) v (.-o _) nil)
-      :o (Triple. (.-s _) (.-p _) v nil)
-      0 (Triple. v (.-p _) (.-o _) nil)
-      1 (Triple. (.-s _) v (.-o _) nil)
-      2 (Triple. (.-s _) (.-p _) v nil)
+      :s (Triple. v (.-p _) (.-o _) (next-triple-id) nil)
+      :p (Triple. (.-s _) v (.-o _) (next-triple-id) nil)
+      :o (Triple. (.-s _) (.-p _) v (next-triple-id) nil)
+      0 (Triple. v (.-p _) (.-o _) (next-triple-id) nil)
+      1 (Triple. (.-s _) v (.-o _) (next-triple-id) nil)
+      2 (Triple. (.-s _) (.-p _) v (next-triple-id) nil)
       (swizzle-assoc* _ {\s 0 \p 1 \o 2} k v)))
 #+END_SRC
 
 *** Constructor
 #+BEGIN_SRC clojure :noweb-ref triple
   (defn triple
-    ([s p o] (Triple. s p o nil))
-    ([t] (if (instance? Triple t) t (Triple. (first t) (nth t 1) (nth t 2) nil))))
+    ([s p o] (Triple. s p o (next-triple-id) nil))
+    ([t] (if (instance? Triple t)
+           t
+           (Triple.
+            (first t) (nth t 1) (nth t 2)
+            (if (= 4 (count t)) (nth t 3) (next-triple-id)) nil))))
 #+END_SRC
 
 ** In-memory stores
@@ -719,7 +745,7 @@ of the code.
           (let [s (get (find spo s) 0 s)
                 p (get (find pos p) 0 p)
                 o (get (find osp o) 0 o)
-                t (Triple. s p o nil)]
+                t (Triple. s p o (next-triple-id) nil)]
             (PlainMemoryStore.
              (update-in spo [s p] d/set-conj t)
              (update-in pos [p o] d/set-conj t)
@@ -734,7 +760,7 @@ of the code.
               (let [s (get (find spo s) 0 s)
                     p (get (find pos p) 0 p)
                     o (get (find osp o) 0 o)
-                    t (Triple. s p o nil)]
+                    t (Triple. s p o (next-triple-id) nil)]
                 (recur
                  true
                  (update-in spo [s p] d/set-conj t)
@@ -1043,7 +1069,7 @@ implementation for an efficient inferencer...
       [_ [s p o :as t]]
       (if-not (ids t)
         (let [id (.-next-id _)
-              ^TripleGraph g (add-node _ (TripleNode. (Triple. s p o nil) nil) nil)]
+              ^TripleGraph g (add-node _ (TripleNode. (Triple. s p o (next-triple-id) nil) nil) nil)]
           (-> (index-branch g id [[s p nil] [s nil nil] root])
               (index-branch id [[nil p o] [nil p nil] root])
               (index-branch id [[s nil o] [nil nil o] root])))
