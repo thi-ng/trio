@@ -96,7 +96,9 @@ to act on it.
     (predicate? [_ x])
     (object? [_ x])
     (indexed? [_ x])
-    (model-size [_]))
+    (model-size [_])
+    (latest-triple [_])
+    (latest-triple-id [_]))
 #+END_SRC
 
 *** PModelUpdate
@@ -257,9 +259,9 @@ for more details.
 ** Helper functions
 
 #+BEGIN_SRC clojure :noweb-ref helpers
-  (def ^:private triple-counter (atom 0))
+  (def ^:private triple-ident (atom 0))
 
-  (defn- next-triple-id [] (swap! triple-counter inc))
+  (defn- next-triple-id [] (swap! triple-ident inc))
 
   (defn- remove-from-index
     [idx i1 i2 i3]
@@ -605,7 +607,13 @@ of the code.
         <<tpl-reduce-start>>)
 
        Object
-       (toString [_] (str "[" (pr-str s) " " (pr-str p) " " (pr-str o) "]"))
+       (toString
+        [_]
+        (str "#trio/Triple ["
+             (pr-str s) " "
+             (pr-str p) " "
+             (pr-str o) " "
+             (pr-str id) "]"))
        ])
 #+END_SRC
 
@@ -813,6 +821,12 @@ of the code.
     (predicates [_] (keys pos))
     (objects [_] (keys osp))
     (model-size [_] size)
+    (latest-triple [_]
+      (->> spo vals (mapcat vals) (apply concat) ;; select all
+           (reduce
+             (fn [a b] (if (< (triple-id a) (triple-id b)) b a)))))
+    (latest-triple-id [_]
+      (triple-id (latest-triple _)))
 
     PModelSelect
     (select [_]
